@@ -682,7 +682,7 @@ requestAnimationFrame(loop);
 /* ====== 時鐘 ====== */
 function tick(){
   const d = new Date();
-  const h = String(d.getHours()).padStart(2,'0'), m = String(d.getMinutes()).padStart(2,'0');
+  const [h, m] = taiwanTimeString(d).split(':');
   document.getElementById('clock').innerHTML = `${h}<span class="colon">:</span>${m}`;
 }
 setInterval(tick, 1000); tick();
@@ -997,7 +997,7 @@ function updateSyncUI(){
   btnSyncNow.disabled = syncState.isSyncing || syncState.mode === 'off';
   if (syncState.lastSync){
     const d = syncState.lastSync;
-    syncLastTimeEl.textContent = `上次同步：${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+    syncLastTimeEl.textContent = `上次同步：${taiwanTimeString(d, true)}`;
     syncLastTimeEl.className = 'sync-result ok';
   } else {
     syncLastTimeEl.textContent = '上次同步：--';
@@ -1187,8 +1187,17 @@ async function fillStopsForTrains(trains, stationId){
 // LiveBoard 只涵蓋接近現在的即時班次；DailyTimetable/Station 提供當日完整班表。
 // 使用班表作底，再用 LiveBoard 同車次資料覆蓋即時時間、月台與誤點。
 const dailyStationCache = new Map();
-function taiwanDateString(d=new Date()){
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+// 所有看板日期與時鐘均使用臺灣固定 UTC+08:00，不依賴瀏覽器時區。
+function taiwanParts(d){
+  const tw = new Date(d.getTime() + 8*3600e3);
+  const pad = n => String(n).padStart(2,'0');
+  return { date:`${tw.getUTCFullYear()}-${pad(tw.getUTCMonth()+1)}-${pad(tw.getUTCDate())}`,
+    time:`${pad(tw.getUTCHours())}:${pad(tw.getUTCMinutes())}:${pad(tw.getUTCSeconds())}` };
+}
+function taiwanDateString(d=new Date()){ return taiwanParts(d).date; }
+function taiwanTimeString(d=new Date(), seconds=false){
+  const time = taiwanParts(d).time;
+  return seconds ? time : time.slice(0,5);
 }
 const DAILY_SOURCES = [
   { name:'TDX v2', auth:true,  url:(id,date)=>`${TDX_BASE}/DailyTimetable/Station/${id}/${date}?$format=JSON` },
@@ -1237,8 +1246,10 @@ function parseTDXTime(raw, dateStr){
   const s = String(raw || '').trim();
   if (!s) return { time:'', ts:NaN };
   if (s.includes('T')){                      // ISO（保險用）
-    const m = /T(\d{2}:\d{2})/.exec(s);
-    return { time: m ? m[1] : '', ts: Date.parse(s) };
+    // 未帶時區的 ISO 時間視為臺灣時間；有時區則轉成臺灣時間顯示。
+    const iso = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : `${s}+08:00`;
+    const ts = Date.parse(iso);
+    return { time: Number.isFinite(ts) ? taiwanTimeString(new Date(ts)) : '', ts };
   }
   const m = /^(\d{1,2}):(\d{2})/.exec(s);     // HH:mm / HH:mm:ss
   if (!m) return { time:'', ts:NaN };
@@ -1267,9 +1278,13 @@ function mapTDXDailyStationTrain(item, date){
   const arrTime = stop.ArrivalTime || '';
   const depTime = stop.DepartureTime || '';
   const parsed  = parseTDXTime(depTime || arrTime, trainDate);
-  let ts = fixMidnight(parsed.ts, Date.now());
-  // 跨午夜：例如 23:52 到、00:01 開 → 發車算隔天（HH:mm 零填時字串比較有效）
-  if (Number.isFinite(ts) && arrTime && depTime && depTime < arrTime) ts += 24*3600e3;
+  // 當日班表的 TrainDate 是基準日期，不可依現在時間再次推算隔日。
+  // 只有到、發均為無日期時間，且發車早於到站時，才將發車加一天。
+  let ts = parsed.ts;
+  if (arrTime && depTime && !String(arrTime).includes('T') && !String(depTime).includes('T')){
+    const arrival = parseTDXTime(arrTime, trainDate);
+    if (Number.isFinite(ts) && Number.isFinite(arrival.ts) && ts < arrival.ts) ts += 24*3600e3;
+  }
 
   const end   = info.EndingStationName   || {};
   const start = info.StartingStationName || {};
@@ -1299,7 +1314,7 @@ function mapTDXToTrain(item){
 
   const nowMs = Date.now();
   const parsed = parseTDXTime(raw, taiwanDateString());
-  let ts = fixMidnight(parsed.ts, nowMs);
+  let ts = String(raw).includes('T') ? parsed.ts : fixMidnight(parsed.ts, nowMs);
   const delay = Number(item.DelayTime || 0);          // 誤點分鐘數（v2/v3 同欄位）
   if (Number.isFinite(ts)) ts += delay * 60000;       // 誤點 → 實際到站時間往後推
 
