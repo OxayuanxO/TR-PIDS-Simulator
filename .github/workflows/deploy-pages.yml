@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - arena/1bc38531-tr-pids-simulator
+      - arena/0784d5c6-tr-pids-simulator
   workflow_dispatch:
 
 permissions:
