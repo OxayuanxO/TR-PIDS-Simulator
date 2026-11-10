@@ -4,6 +4,27 @@
 
 > 本專案為非官方視覺模擬工具，與臺灣鐵路公司、交通部或 TDX 無隸屬關係；顯示內容不應作為實際乘車依據。
 
+## Disclaimer
+
+This project is an independent, unofficial recreation of the Taiwan Railway (TRA) Passenger Information Display System (PIDS).
+
+- This project is not affiliated with, endorsed by, or associated with Taiwan Railway Corporation.
+- All source code was independently developed for educational and research purposes.
+- Taiwan Railway’s trademarks, logos, and other third-party materials remain the property of their respective owners.
+- Any third-party materials used in this project are subject to their respective licenses.
+
+本專案僅供學習、研究及技術展示使用，與國營臺灣鐵路股份有限公司無任何官方合作或隸屬關係。
+
+## Data Source & Attribution
+
+This project uses transportation data provided by the Ministry of Transportation and Communications (MOTC) TDX platform.
+
+資料來源：交通部運輸資料流通服務平臺（TDX）
+
+Official website: [https://tdx.transportdata.tw/](https://tdx.transportdata.tw/)
+
+本專案使用 TDX 提供之交通運輸資料進行個人開發與展示，資料權利及使用條件依 TDX 平臺相關授權規範辦理。
+
 ## 功能特色
 
 - **月台顯示器模擬**：呈現月台、發車時間、目的地、車次、車種、狀態、備註、跑馬燈與時鐘。
