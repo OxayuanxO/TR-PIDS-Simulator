@@ -17,7 +17,7 @@
     --screen:#06090e;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  html,body{min-height:100%}
+  html,body{min-height:100%;overflow-x:hidden}
   body{
     font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei","Heiti TC",system-ui,sans-serif;
     background:linear-gradient(180deg,#242a32 0,#1b1f25 480px,#1b1f25 100%);
@@ -36,13 +36,13 @@
   .editor{padding-top:28px}
 
   /* ===== 天花板吊架 ===== */
-  .mount{position:relative;height:46px;margin:0 auto;width:92%}
+  .mount{position:relative;height:46px;margin:0 18px}   /* 與外框左右內距對齊 */
   .mount::before,.mount::after{
     content:"";position:absolute;bottom:0;width:14px;height:46px;
     background:linear-gradient(90deg,#3a3f46,#6b727c 50%,#3a3f46);
   }
-  .mount::before{left:12%}
-  .mount::after{right:12%}
+  .mount::before{left:16%}
+  .mount::after{right:16%}
 
   /* ===== 顯示器外框 ===== */
   .bezel{
@@ -70,44 +70,87 @@
     background:repeating-linear-gradient(0deg,rgba(0,0,0,.07) 0 1px,transparent 1px 4px);
   }
 
-  /* ===== 版面格線：時間｜開往｜車次｜車種｜狀態｜備註 ===== */
+  /* ===== 版面格線：時間｜開往｜車次＋車種｜狀態｜備註 =====
+     整個畫面是一個左右對稱的「內容框」：
+       ┌────┬──────────────────────────────────────────┬────┐
+       │月台│ 時間  開往   車次  車種   狀態   備註    │月台│  ← 表頭列：左上、右上各留一格
+       │    │ 09:58 嘉義  [2143 區間]   準點   山線    │    │
+       │ 跑馬燈 ……………………………………………………………   10:19 │  ← 底部列：橫跨全寬
+       └────┴──────────────────────────────────────────┴────┘
+     · 左右兩側固定留出等寬的邊欄（--gpad），月台編號就放在邊欄的最上面一格，
+       不管放左上、右上或兩側，中間的欄位都不會移動。
+     · 表頭與資料列共用同一組左右邊界；底部的跑馬燈＋時鐘則橫跨整個螢幕寬度，
+       左右貼齊月台徽章的外緣（--fpad），把下方空間用滿。
+     · 關閉月台編號時邊欄收回成一般邊距，多出來的寬度平均加到欄距上。 */
+  .screen{
+    --edge:24px;                       /* 月台徽章距離螢幕左右邊緣 */
+    --slot:68px;                       /* 月台徽章寬度（固定，字太長自動縮字） */
+    /* 內容框左右邊界固定：不論月台編號開或關、放左或放右，欄位都不會移動 */
+    --gpad:calc(var(--edge) + var(--slot) + 16px);   /* 24 + 68 + 16 = 108 */
+    --ggap:14px;                       /* 欄距 */
+    --fpad:var(--edge);                /* 底部列左右貼齊月台徽章外緣 */
+  }
   .grid{
     display:grid;
-    grid-template-columns:180px 200px 160px 250px 20px 220px minmax(0,1fr);
+    /* 時間 168｜開往 180｜車次＋車種 28%｜狀態 168｜備註（吃掉剩餘寬度）
+       車次＋車種加寬 → 狀態與備註整欄往右移，不會再黏在色塊邊上 */
+    grid-template-columns:168px 180px 28% 168px minmax(0,1fr);
+    column-gap:var(--ggap);
     align-items:center;
-    padding-left:40px;padding-right:24px;
+    padding:0 var(--gpad);
   }
   .head{height:72px;position:relative;font-size:27px;font-weight:700;color:#f2f4f7;letter-spacing:1px}
-  .head .lbl{white-space:nowrap}
+  .head .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  /* 車次＋車種：表頭與資料列共用同一組子格線（40%／60%），字級一致對齊 */
+  .head .th-train{grid-column:3;display:grid;grid-template-columns:40% 60%;column-gap:0;min-width:0}
+  /* 車次／車種的資料在色塊內是置中的，表頭也必須置中才對得齊（靠左會偏一邊） */
   .head .c-no,.head .c-type{text-align:center}
+  /* 其餘欄位一律靠左對齊（不再有 padding 補丁）→ 表頭與資料列 x 座標完全一致 */
+  /* 月台編號：放在左上／右上預留的那一格，寬度固定，不佔用欄位 */
   .plat{
-    position:absolute;left:30px;top:50%;transform:translateY(-50%);
-    min-width:62px;height:42px;padding:0 10px;border-radius:7px;
+    position:absolute;top:13px;
+    width:var(--slot);height:46px;border-radius:8px;
     background:var(--c-north);color:#fff;
     display:flex;align-items:center;justify-content:center;
-    font-size:30px;font-weight:800;letter-spacing:0;
+    font-size:30px;font-weight:800;letter-spacing:0;line-height:1;
+    white-space:nowrap;overflow:hidden;
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.25);
+    z-index:2;
   }
-  .head .c-time{padding-left:86px}
-  .head.no-platform .c-time{padding-left:0}
+  .plat.pos-left{left:var(--edge)}
+  .plat.pos-right{right:var(--edge)}
   .plat.is-hidden{display:none}
 
   .row{height:96px;font-size:50px;position:relative}
   .row .c-time{font-variant-numeric:tabular-nums;letter-spacing:0;font-size:48px}
-  .row .c-dest{letter-spacing:4px}
-  .row .c-status,.row .c-remark{letter-spacing:2px}
+  .row .c-dest{letter-spacing:2px;font-size:34px}
+  .row .c-status{letter-spacing:1px;font-size:34px}
+  .row .c-remark{letter-spacing:0;font-size:34px}
+  /* 狀態、備註靠左；字太長時橫向壓字，transform-origin 跟著對齊方式走（left → left） */
+  .row .c-status,.row .c-remark{display:flex;justify-content:flex-start;align-items:center}
+  .row .c-status .fit,.row .c-remark .fit{transform-origin:left center;flex:0 0 auto}
+  /* 手動備註超長 → 無縫跑馬燈（僅手動模式），速度約 100px/s */
+  .row .c-remark .mq-wrap{display:inline-flex;white-space:nowrap;animation:mqScroll var(--mq-dur,8s) linear infinite}
+  .row .c-remark .mq-wrap > span{padding-right:56px}
+  @keyframes mqScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .cell.c-remark.has-marquee{
+    /* 左右兩側都做柔邊，捲動中的字不會被硬切一半 */
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 28px),transparent);
+            mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 28px),transparent);
+  }
+  @media (prefers-reduced-motion:reduce){ .row .c-remark .mq-wrap{animation:none!important} }
   .cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .fit{display:inline-block;transform-origin:left center;white-space:nowrap}
 
   /* 車次＋車種 色塊 */
   .train{
-    grid-column:3 / span 2;
-    display:grid;grid-template-columns:160px 250px;align-items:center;
-    height:68px;border-radius:9px;
+    grid-column:3;
+    display:grid;grid-template-columns:40% 60%;align-items:center;
+    height:68px;border-radius:9px;overflow:hidden;
   }
-  .train .no,.train .type{display:flex;justify-content:center;align-items:center}
-  .train .no{font-variant-numeric:tabular-nums;letter-spacing:1px}
-  .train .type{letter-spacing:3px}
+  .train .no,.train .type{display:flex;justify-content:center;align-items:center;min-width:0}
+  .train .no{font-variant-numeric:tabular-nums;letter-spacing:0;font-size:44px}
+  .train .type{letter-spacing:2px;font-size:32px}
   .train.orange{background:var(--c-orange);color:#16110c}
   .train.purple{background:var(--c-purple);color:#14101f}
   .train.yellow{background:var(--c-yellow);color:#17150a}
@@ -116,10 +159,14 @@
 
   .st-delay{color:var(--c-delay)}
   .st-cancel{color:var(--c-cancel)}
+  .st-departed{color:#7f8b99}
+  .st-unknown{color:#a7b1bd}
   @keyframes blink{50%{opacity:.15}}
-  /* 即將進站：上下兩個圓點輪流亮起，文字保持常亮 */
+  /* ===== 列車動態小圓點 =====
+     固定一種樣式：上下兩點以 1 秒為一循環交替亮起，不會因停靠／即將發車／進站而變速。
+     圓點本身只代表「列車動態中」，進站、停靠一律靠這裡；狀態文字另外只有 準點／晚點／停駛／未知。 */
   .arrival-signal{
-    position:absolute;left:13px;top:50%;transform:translateY(-50%);
+    position:absolute;left:calc(var(--gpad, 40px) - 24px);top:50%;transform:translateY(-50%);
     width:18px;height:34px;display:flex;flex-direction:column;
     align-items:center;justify-content:space-between;
   }
@@ -134,94 +181,219 @@
     .arrival-signal .upper-dot,.arrival-signal .lower-dot{animation:none;opacity:1}
   }
 
-  .empty{height:96px;display:flex;align-items:center;padding-left:126px;font-size:34px;color:#5d6673}
+  .empty{height:96px;display:flex;align-items:center;padding:0 var(--gpad);font-size:34px;color:#5d6673}
 
   /* ===== 底部：跑馬燈＋時鐘 ===== */
   .foot{
     height:78px;display:flex;align-items:center;
+    padding:0 var(--fpad);             /* 底部列用滿整個螢幕寬度，不受左右月台邊欄限制：
+                                          跑馬燈左緣對齊左上月台格、時鐘右緣對齊右上月台格 */
     border-top:2px solid #1d232c;
   }
-  .ticker{flex:1;height:100%;overflow:hidden;position:relative;
-    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 30px,#000 calc(100% - 30px),transparent);
-            mask-image:linear-gradient(90deg,transparent 0,#000 30px,#000 calc(100% - 30px),transparent)}
+  .ticker{flex:1;min-width:0;height:100%;overflow:hidden;position:relative;margin-right:28px;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 36px),transparent);
+            mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 36px),transparent)}
   .ticker-track{position:absolute;top:50%;transform:translateY(-50%);white-space:nowrap;font-size:31px;font-weight:600;color:#eef1f5;letter-spacing:2px;will-change:transform}
   .clock{
-    width:230px;height:100%;display:flex;align-items:center;justify-content:center;
+    flex:0 0 auto;height:100%;display:flex;align-items:center;justify-content:flex-end;
+    margin-right:-4px;                 /* 抵銷最後一個數字的 letter-spacing，讓數字右緣貼齊內容框 */
     font-size:54px;font-weight:600;letter-spacing:4px;font-variant-numeric:tabular-nums;
     font-family:"DIN Alternate","Bahnschrift","Roboto Mono","Segoe UI",sans-serif;
   }
   .clock .colon{margin:0 12px;animation:blink 1s steps(1) infinite}
 
   /* ===== 下方：說明與編輯區 ===== */
-  .titlebar{
-    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
-    background:#12161c;border:1px solid #262d36;border-radius:12px;
-    padding:14px 18px;margin:0 0 16px;
+  /* =====================================================================
+     設定介面（重寫版）
+     版面結構：sticky 頂欄 → 顯示器預覽 → 分頁切換 → 置中卡片（單欄、max 880px）
+     所有欄位皆為「label 上、控制項下」，同一種節奏，不再混用單欄／雙欄。
+     ===================================================================== */
+  .settings-view{width:100%;max-width:920px;margin:0 auto;padding:0 0 80px}
+
+  /* ---- 頂欄：返回＋分頁＋即時狀態 ---- */
+  .settings-top{
+    position:sticky;top:0;z-index:20;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+    padding:10px 0 10px;margin:0 0 4px;
+    background:rgba(27,31,37,.92);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    border-bottom:1px solid #262d36;
   }
-  .titlebar h1{font-size:22px;color:#fff;letter-spacing:1px}
-  .titlebar p{font-size:13px;color:#9aa6b4;margin-top:4px}
-  .lang-pill{display:flex;background:#0f1318;border:1px solid #2b333d;border-radius:999px;padding:3px}
-  .lang-pill button{background:none;border:0;color:#9aa6b4;font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;cursor:pointer}
-  .lang-pill button.on{background:#2a7de1;color:#fff}
-  .lang-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-  .lang-ctl{display:flex;align-items:center;gap:8px}
-  .lang-label{font-size:12px;color:#9aa6b4;letter-spacing:1px;white-space:nowrap}
-  .lang-pill button{white-space:nowrap}
-  .lang-pill.small button{padding:6px 10px;font-size:12px}
-  @media (max-width:600px){
-    .lang-controls{gap:10px}
-    .titlebar{padding:12px 14px}
-    .lang-pill button{padding:6px 9px;font-size:12px}
-    .lang-pill.small button{padding:6px 8px;font-size:11px}
-    .field-grid{grid-template-columns:1fr}
-    .panel{grid-template-columns:minmax(0,1fr)}
+  .settings-top .brand{font-size:13px;font-weight:700;color:#e8edf3;letter-spacing:.5px;white-space:nowrap}
+  .settings-top .brand small{display:block;font-size:11px;font-weight:400;color:#7f8b99;letter-spacing:0}
+  .settings-top .sync-badge{margin-left:auto}
+  .settings-back{
+    display:inline-flex;align-items:center;gap:6px;
+    background:#1d2530;border:1px solid #3a4553;color:#dfe6ee;border-radius:999px;
+    padding:7px 14px;font:inherit;font-size:13px;cursor:pointer;
+  }
+  .settings-back:hover{background:#26313d}
+  .settings-back:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
+
+  /* ---- 顯示器預覽：依容器寬度縮放（與主畫面同一份繪製結果） ---- */
+  .preview{
+    background:#12161c;border:1px solid #262d36;border-radius:12px;
+    padding:12px 12px 10px;margin:14px 0 16px;
+  }
+  .preview-head{display:flex;align-items:baseline;gap:8px;font-size:12px;color:#7f8b99;margin-bottom:8px}
+  .preview-head b{font-size:12px;color:#c9d2dc;letter-spacing:1px}
+  .preview-wrap{position:relative;width:100%;height:120px;overflow:hidden;border-radius:6px;background:#06090e}
+  .preview-wrap .screen{position:absolute;left:0;top:0;transform-origin:0 0}   /* 比例由 rescale() 依容器寬度計算 */
+
+  /* ---- 分頁 ---- */
+  .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+  .tab{
+    display:inline-flex;align-items:center;gap:7px;
+    background:#151a21;border:1px solid #2b333d;color:#9aa6b4;
+    border-radius:999px;padding:8px 16px;font:inherit;font-size:13px;cursor:pointer;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  .tab:hover{background:#1d2530;color:#dfe6ee}
+  .tab.on{background:#2a7de1;border-color:#2a7de1;color:#fff;font-weight:700}
+  .tab .n{font-size:11px;opacity:.75;font-variant-numeric:tabular-nums}
+  .tab:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
+
+  /* ---- 卡片 ---- */
+  .card{
+    background:#12161c;border:1px solid #262d36;border-radius:12px;
+    padding:18px;margin:0 0 14px;min-width:0;
+  }
+  .card > h2{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    font-size:14px;font-weight:700;color:#e8edf3;letter-spacing:.5px;
+    margin:0 0 6px;padding:0 0 10px;border-bottom:1px solid #232a33;
+  }
+  .card > h2 .sub{font-size:11px;font-weight:400;color:#7f8b99;letter-spacing:0}
+  .card > h2 .sync-badge{margin-left:auto}
+  .hint{font-size:12px;color:#7f8b99;line-height:1.65;margin:10px 0 0}
+  .hint b{color:#a9b6c3}
+  .hint code{font-size:11px;background:#0b0f14;border:1px solid #232b34;border-radius:4px;padding:1px 5px;color:#9fd0ff}
+  details.more{margin-top:12px;border-top:1px dashed #232a33;padding-top:10px}
+  details.more > summary{
+    cursor:pointer;font-size:12px;color:#9aa6b4;list-style:none;
+    display:flex;align-items:center;gap:6px;user-select:none;
+  }
+  details.more > summary::-webkit-details-marker{display:none}
+  details.more > summary::before{content:"▸";color:#5d6673;transition:transform .15s}
+  details.more[open] > summary::before{transform:rotate(90deg)}
+  details.more > summary:hover{color:#dfe6ee}
+  details.more .hint{margin-top:10px}
+
+  /* ---- 欄位：label 上、控制下，統一節奏 ---- */
+  .rows{display:grid;gap:0}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+  @media (max-width:620px){.row2{grid-template-columns:1fr}}
+  .f{margin:12px 0 0;min-width:0}
+  .f > label,.f > .lbl{display:block;font-size:12px;color:#8a96a4;margin-bottom:6px;letter-spacing:.5px}
+  .f > label .tip,.f > .lbl .tip{color:#5d6673;letter-spacing:0}
+  .f input[type=text],.f input[type=password],.f input[type=number],.f select,.f textarea{
+    display:block;width:100%;background:#0a0d11;border:1px solid #2a323c;color:#e8edf3;
+    border-radius:7px;padding:9px 30px 9px 10px;font:inherit;font-size:13.5px;outline:none;
+    transition:border-color .15s,background .15s;
+  }
+  .f textarea{resize:vertical;min-height:62px;padding-right:10px;line-height:1.6}
+  .f input:focus,.f select:focus,.f textarea:focus{border-color:#2a7de1;background:#0c1116}
+  .f input.invalid{border-color:#ff5a4f;background:#2a1616}
+  .f .hint{margin-top:6px;font-size:11.5px;line-height:1.55}
+
+  /* 開關式勾選 */
+  .toggle{display:flex;align-items:flex-start;gap:10px;margin:14px 0 0;cursor:pointer}
+  .toggle input{
+    appearance:none;-webkit-appearance:none;flex:0 0 auto;
+    width:38px;height:22px;margin:0;border-radius:999px;background:#2a323c;
+    position:relative;cursor:pointer;transition:background .15s;border:0;
+  }
+  .toggle input::after{
+    content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+    background:#8a96a4;transition:transform .15s,background .15s;
+  }
+  .toggle input:checked{background:#2a7de1}
+  .toggle input:checked::after{transform:translateX(16px);background:#fff}
+  .toggle input:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
+  .toggle .t{font-size:13px;color:#dfe6ee;line-height:1.45}
+  .toggle .t small{display:block;font-size:11.5px;color:#7f8b99;margin-top:2px;line-height:1.5}
+  .check-group{margin:16px 0 0;padding:12px 14px;background:#0e1318;border:1px solid #212932;border-radius:9px}
+  .check-group > .lbl{display:block;font-size:12px;color:#8a96a4;margin-bottom:4px;letter-spacing:.5px}
+  .check-group .toggle{margin:10px 0 0}
+
+  /* ---- 語言切換膠囊 ---- */
+  .lang-pill{display:inline-flex;background:#0f1318;border:1px solid #2b333d;border-radius:999px;padding:3px;gap:2px}
+  .lang-pill button{
+    background:none;border:0;color:#9aa6b4;font:inherit;font-size:13px;
+    padding:7px 15px;border-radius:999px;cursor:pointer;white-space:nowrap;
+  }
+  .lang-pill button:hover{color:#dfe6ee}
+  .lang-pill button.on{background:#2a7de1;color:#fff;font-weight:700}
+  .lang-pill button:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
+  @media (max-width:480px){.lang-pill button{padding:7px 11px;font-size:12px}}
+
+  /* ---- 狀態／結果指示 ---- */
+  .info-box{background:#0b0f14;border:1px solid #232b34;border-radius:9px;padding:10px 12px;margin:14px 0 0;font-size:12px;color:#9fb0c0;line-height:1.7}
+  .info-box div+div{margin-top:4px}
+  .sync-result{font-size:12px;color:#9fb0c0;margin:0;min-height:1.4em}
+  .sync-result.warn{color:#ffd23f}
+  .sync-result.error{color:#ff5a4f}
+  .sync-result.ok{color:#4bd07f}
+  .acts{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 0}
+  .btn{
+    background:#1d2530;border:1px solid #2f3a47;color:#dfe6ee;border-radius:7px;
+    padding:8px 14px;font:inherit;font-size:13px;cursor:pointer;
+  }
+  .btn:hover{background:#25303d}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.primary{background:#2a7de1;border-color:#2a7de1;color:#fff}
+  .btn.primary:hover{background:#3589ee}
+  .btn.ghost{background:transparent;border-color:#3a4553;color:#a9b6c3}
+
+  /* ---- 車種色彩表 ---- */
+  .legend{display:grid;gap:8px;font-size:12.5px;color:#c3ccd6;margin-top:12px}
+  .legend div{display:flex;align-items:center;gap:10px}
+  .legend b{display:inline-block;min-width:104px;text-align:center;padding:3px 8px;border-radius:5px;color:#111;font-weight:700;font-size:12px}
+  .legend span{color:#8a96a4}
+
+  /* ---- 班次卡片（不用橫向捲動，每班一張，欄位各自帶標籤） ---- */
+  .tlist{display:grid;gap:10px;margin-top:12px}
+  .tcard{background:#0e1318;border:1px solid #232b34;border-radius:10px;padding:12px}
+  .tcard + .tcard{margin-top:0}
+  .tcard.is-departed{opacity:.55}
+  .tcard .mini{min-width:0}
+  .tcard .mini > label{display:block;font-size:11px;color:#7f8b99;margin-bottom:4px;letter-spacing:.5px;white-space:nowrap}
+  .tcard .mini > label .opt{color:#4f5865;letter-spacing:0}
+  .tcard input,.tcard select{
+    display:block;width:100%;background:#0a0d11;border:1px solid #2a323c;color:#e8edf3;
+    border-radius:6px;padding:7px 8px;font:inherit;font-size:13px;outline:none;
+  }
+  .tcard select{padding-right:22px}
+  .tcard input:focus,.tcard select:focus{border-color:#2a7de1}
+  .tcard input.invalid{border-color:#ff5a4f;background:#2a1616}
+  .tcard-top{
+    display:grid;align-items:end;gap:6px;
+    grid-template-columns:24px 76px minmax(96px,1.1fr) 76px minmax(96px,1fr) minmax(88px,.9fr) 58px 58px 30px;
+  }
+  .tcard-top > .mini{min-width:0}
+  .tcard-top .idx{
+    font-size:11px;color:#5d6673;text-align:center;padding-bottom:9px;
+    font-variant-numeric:tabular-nums;
+  }
+  .tcard-mid{display:grid;gap:8px;grid-template-columns:minmax(130px,.9fr) 1.5fr 1.5fr;margin-top:8px}
+  .tcard-bot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .tcard-bot .rmk-cell{flex:1 1 auto;margin:0}
+  .rmk-cell{font-size:11.5px;color:#9fb0c0;line-height:1.5;white-space:normal}
+  .rmk-cell b{color:#c9d2dc;font-weight:600}
+  .gone-tag{display:inline-block;font-size:10px;line-height:1.3;color:#ffd23f;border:1px solid #6b5a1e;background:#241f0c;border-radius:5px;padding:2px 6px;white-space:nowrap}
+  .del{background:#1d2530;border:1px solid #4a2a2a;color:#ff8b82;border-radius:6px;padding:8px 0;font:inherit;line-height:1;cursor:pointer;width:32px}
+  .del:hover{background:#2a1a1a}
+  /* 手機：每列兩個欄位，班次序號與刪除鈕放最上面一列 */
+  @media (max-width:700px){
+    .tcard-top{grid-template-columns:1fr 1fr;gap:8px}
+    .tcard-top .idx{grid-row:1;grid-column:1;padding:0;text-align:left;align-self:center}
+    .tcard-top .del{grid-row:1;grid-column:2;justify-self:end;align-self:center;width:30px;padding:6px 0}
+    .tcard-top .mini:nth-child(8){grid-column:1/-1}
+    .tcard-mid{grid-template-columns:1fr}
   }
 
-  .panel{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
-  @media (max-width:900px){.panel{grid-template-columns:minmax(0,1fr)}}
-  .card{background:#12161c;border:1px solid #262d36;border-radius:12px;padding:16px;min-width:0}
-  .card-full{grid-column:1 / -1}
-  .card h2{font-size:14px;color:#c9d2dc;margin-bottom:12px;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center}
-  .tbl{width:100%;border-collapse:collapse;font-size:13px}
-  .tbl th{text-align:left;color:#7f8b99;font-weight:500;padding:0 4px 8px;white-space:nowrap}
-  .tbl td{padding:4px}
-  .tbl input,.tbl select,.card input[type=text],.card input[type=password],.card select{
-    width:100%;background:#0a0d11;border:1px solid #2a323c;color:#e8edf3;border-radius:6px;
-    padding:7px 28px 7px 8px;font:inherit;font-size:13px;outline:none;
-  }
-  .tbl input:focus,.tbl select:focus,.card input:focus,.card select:focus{border-color:#2a7de1}
-.tbl input.invalid,.card input.invalid{border-color:#ff5a4f;background:#2a1616}
-  .tbl .w-time{width:76px}.tbl .w-no{width:74px}.tbl .w-min{width:64px}.tbl .w-rm{width:72px}
-  /* 讓下拉選單有足夠寬度顯示完整文字（原本 760px 太窄，選項會被壓成一個字） */
-  .tbl{min-width:1000px}
-  .tbl td:nth-child(2) select,   /* 開往目的地 */
-  .tbl td:nth-child(5) select,   /* 車種 */
-  .tbl td:nth-child(6) select,   /* 狀態 */
-  .tbl td:nth-child(8) select{ min-width:132px }
-  .tbl tr.main td{padding-bottom:2px}
-  .tbl tr.sub td{padding:0 4px 12px;border-bottom:1px solid #232a33}
-  .stops-line{display:flex;align-items:center;gap:8px}
-  .stops-line span{font-size:12px;color:#8a96a4;white-space:nowrap;min-width:48px}
-  .stops-line input{flex:1 1 0;min-width:0;width:auto}
-  .swatch{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:middle}
-  .btn{background:#1d2530;border:1px solid #2f3a47;color:#dfe6ee;border-radius:7px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
-  .btn:hover{background:#25303d}
-  .btn.primary{background:#2a7de1;border-color:#2a7de1;color:#fff}
-  .btn.icon{padding:6px 9px;color:#ff8b82}
-  .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-  .field{margin-bottom:12px}
-  .field label{display:block;font-size:12px;color:#8a96a4;margin-bottom:5px}
-  .field.check-field label{display:flex;align-items:center;gap:9px;color:#c9d2dc;font-size:13px;cursor:pointer}
-  .field.check-field input{width:16px;height:16px;margin:0;accent-color:#2a7de1;cursor:pointer}
-  .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
-  .field-grid .field{min-width:0}
-  .info-box{background:#0b0f14;border:1px solid #232b34;border-radius:8px;padding:10px 12px;margin:2px 0 14px;font-size:12px;color:#9fb0c0;line-height:1.7}
-  .info-box div+div{margin-top:4px}
-  .legend{display:grid;gap:8px;font-size:13px;color:#c3ccd6}
-  .legend div{display:flex;align-items:center;gap:10px}
-  .legend b{display:inline-block;min-width:92px;text-align:center;padding:3px 8px;border-radius:5px;color:#111;font-weight:700;font-size:12px}
-  .note{font-size:12px;color:#7f8b99;line-height:1.7;margin-top:12px}
-  .scroll-x{overflow-x:auto;max-width:100%}
+  /* ---- 分頁面板顯示控制 ---- */
+  .pane[hidden]{display:none!important}
 
   /* 主畫面與設定頁分開顯示；隱藏時仍保留顯示器尺寸，讓跑馬燈持續運作 */
   /* TDX 即時同步狀態指示 */
@@ -230,11 +402,6 @@
   .sync-badge.syncing{background:#f68d55}
   .sync-badge.ok{background:#1f9d55}
   .sync-badge.error{background:#ff5a4f}
-  .sync-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
-  .sync-result{font-size:12px;color:#9fb0c0;margin-top:6px;min-height:1.4em}
-  .sync-result.warn{color:#ffd23f}
-  .sync-result.error{color:#ff5a4f}
-  .sync-result.ok{color:#1f9d55}
 [hidden]{display:none!important}
   body.settings-open .stage{
     position:fixed;top:0;left:-10000px;width:100%;visibility:hidden;pointer-events:none;
@@ -248,9 +415,32 @@
   .settings-trigger:hover{background:#2b3847;color:#fff}
   .settings-trigger:focus-visible,.settings-back:focus-visible{outline:2px solid #77b5ff;outline-offset:3px}
   .settings-trigger svg{width:20px;height:20px}
-  .settings-nav{display:flex;align-items:center;margin-bottom:16px}
-  .settings-back{display:inline-flex;align-items:center;gap:6px}
   @media(max-width:600px){.settings-trigger{right:14px;bottom:14px}}
+
+  /* =====================================================================
+     P0-2：末段 override 補丁區已刪除，以下樣式直接併入上面的變數體系。
+     月台徽章沿用 --slot（68px）；底列不加分隔線；關閉月台只隱藏徽章。
+     ===================================================================== */
+  .foot{border-top:0}
+  .screen.has-plat{ /* 只保留語意，不再改變欄位幾何 */ }
+
+  /* ---- 備註欄模式：segmented control ---- */
+  .seg{display:inline-flex;background:#0f1318;border:1px solid #2b333d;border-radius:9px;padding:3px;gap:3px;flex-wrap:wrap}
+  .seg button{
+    background:none;border:0;color:#9aa6b4;font:inherit;font-size:13px;
+    padding:8px 14px;border-radius:7px;cursor:pointer;white-space:nowrap;
+  }
+  .seg button:hover{color:#dfe6ee}
+  .seg button.on{background:#2a7de1;color:#fff;font-weight:700}
+  .seg button:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
+  .check-group.is-dim{opacity:.45}
+  .check-group.is-dim .toggle{cursor:not-allowed}
+  .check-group.is-dim .toggle input{pointer-events:none}
+  .tcard-rmk{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  @media (max-width:700px){.tcard-rmk{grid-template-columns:1fr}}
+  .tcard-rmk .cnt{float:right;color:#5d6673;font-variant-numeric:tabular-nums;letter-spacing:0}
+  .tcard-rmk .cnt.full{color:#ffd23f}
+
 </style>
 </head>
 <body>
@@ -261,6 +451,8 @@
   <div class="bezel">
     <div class="screen-wrap" id="screenWrap">
       <div class="screen" id="screen">
+        <div class="plat pos-left is-hidden" id="plat"></div>
+        <div class="plat pos-right is-hidden" id="platR"></div>
         <div class="head grid" id="head"></div>
         <div id="rows"></div>
         <div class="foot">
@@ -278,75 +470,205 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/><path d="M9.7 2.8a2 2 0 0 1 4.6 0 2 2 0 0 0 3 1.2 2 2 0 0 1 3.2 3.2 2 2 0 0 0 1.2 3 2 2 0 0 1 0 4.6 2 2 0 0 0-1.2 3 2 2 0 0 1-3.2 3.2 2 2 0 0 0-3 1.2 2 2 0 0 1-4.6 0 2 2 0 0 0-3-1.2 2 2 0 0 1-3.2-3.2 2 2 0 0 0-1.2-3 2 2 0 0 1 0-4.6 2 2 0 0 0 1.2-3A2 2 0 0 1 6.7 4a2 2 0 0 0 3-1.2Z"/></svg>
 </button>
 
-<div class="page editor" id="settingsView" hidden>
-  <nav class="settings-nav"><button class="btn settings-back" id="backToMain" type="button">← 返回主畫面</button></nav>
-  <div class="titlebar">
-    <div>
-      <h1>臺鐵月台列車資訊顯示器（PIDS）</h1>
-      <p>編輯班次與顯示設定；到站資訊與跑馬燈語言可分別設定。</p>
-    </div>
-    <div class="lang-controls">
-      <div class="lang-ctl">
-        <span class="lang-label">到站資訊</span>
-        <div class="lang-pill" id="langPill">
-          <button data-l="auto" class="on">自動輪替</button>
-          <button data-l="zh">中文</button>
-          <button data-l="en">English</button>
-        </div>
-      </div>
-      <div class="lang-ctl">
-        <span class="lang-label">跑馬燈</span>
-        <div class="lang-pill small" id="tickerLangPill">
-          <button data-l="auto" class="on" title="整段訊息播完才切換語言">自動輪替</button>
-          <button data-l="zh">中文</button>
-          <button data-l="en">English</button>
+<div class="settings-view" id="settingsView" hidden>
+
+  <!-- ===== 頂欄：返回／標題／同步狀態 ===== -->
+  <div class="settings-top">
+    <button class="settings-back" id="backToMain" type="button">← 返回主畫面</button>
+    <div class="brand">顯示器設定<small>臺鐵月台列車資訊顯示器（PIDS）</small></div>
+    <span id="syncStatusBadge" class="sync-badge off">未啟用</span>
+  </div>
+
+  <!-- ===== 顯示器預覽（縮小對照） ===== -->
+  <div class="preview">
+    <div class="preview-head"><b>預覽</b>設定會即時反映在下方畫面</div>
+    <div class="preview-wrap" id="settingsScreenWrap">
+      <div class="screen" id="settingsScreen">
+        <div class="plat pos-left is-hidden" id="plat2"></div>
+        <div class="plat pos-right is-hidden" id="plat2R"></div>
+        <div class="head grid" id="head2"></div>
+        <div id="rows2"></div>
+        <div class="foot">
+          <div class="ticker"><div class="ticker-track" id="ticker2"></div></div>
+          <div class="clock" id="clock2">09<span class="colon">:</span>54</div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="panel">
-    <div class="card card-full">
-      <h2>班次資料 <span style="font-weight:400;color:#7f8b99;font-size:12px">依時間自動排序・修改即時反映</span></h2>
-      <div class="scroll-x">
-      <table class="tbl">
-        <thead><tr><th>時間</th><th>開往目的地</th><th>英文目的地（選填）</th><th>車次</th><th>車種</th><th>狀態</th><th>晚(分)</th><th>備註</th><th></th></tr></thead>
-        <tbody id="editRows"></tbody>
-      </table>
-      </div>
-      <div class="actions">
-        <button class="btn primary" id="addRow">＋ 新增班次</button>
-      </div>
-      <p class="note">開往目的地為下拉選單，包含主要終點、支線終點及其他已收錄車站；英文目的地可留空使用內建英譯。<br>「停靠站」填在每班次的第二行，以「、」或逗號分隔；只顯示排序後最上方第一列車的停靠站，英文留空時自動使用內建站名英譯。</p>
-    </div>
+  <!-- ===== 分頁 ===== -->
+  <div class="tabs" role="tablist">
+    <button class="tab on" data-pane="data" role="tab" type="button">班次資料 <span class="n" id="trainCount"></span></button>
+    <button class="tab" data-pane="display" role="tab" type="button">顯示設定</button>
+    <button class="tab" data-pane="ticker" role="tab" type="button">跑馬燈</button>
+    <button class="tab" data-pane="tdx" role="tab" type="button">TDX 同步</button>
+  </div>
 
+  <!-- ===== 分頁 1：班次資料 ===== -->
+  <section class="pane" id="pane-data">
     <div class="card">
-      <h2>顯示器設定</h2>
-      <div class="field-grid">
-        <div class="field"><label for="platform">月台編號</label><input type="text" id="platform" maxlength="12" placeholder="例如 1B"></div>
-        <div class="field"><label for="rowCount">顯示列數</label>
-          <select id="rowCount"><option>2</option><option>3</option><option>4</option></select>
+      <h2>班次資料 <span class="sub">依時間自動排序・修改即時反映</span></h2>
+      <div class="f">
+        <span class="lbl">備註欄（Rmk.）模式</span>
+        <div class="seg" id="remarkModeSeg" role="group" aria-label="備註欄模式">
+          <button data-m="auto" class="on" type="button">自動（API 推導）</button>
+          <button data-m="manual" type="button">手動輸入</button>
         </div>
-        <div class="field"><label for="platColor">月台色（方向）</label>
+        <p class="hint" id="remarkModeHint">自動模式：勾選的項目（經由／車輛數／服務標記）每 4 秒輪一種，<b>同一時間整排顯示同一種資訊</b>。切到「手動輸入」可逐班自訂中／英備註。</p>
+      </div>
+      <div class="tlist" id="editRows"></div>
+      <div class="acts"><button class="btn primary" id="addRow" type="button">＋ 新增班次</button></div>
+      <p class="hint">
+        英文目的地可留空，會自動使用內建英譯。<br>
+        <b>停靠站</b>填在每班次第二行，以「、」或逗號分隔；只顯示排序後第一列車的停靠站，英文留空同樣使用內建英譯。
+      </p>
+      <div class="check-group" id="rmkAutoGroup">
+        <span class="lbl">備註欄（Rmk.）顯示項目（自動模式）</span>
+        <label class="toggle"><input type="checkbox" id="rmkVia" checked><span class="t">
+          經由
+          <small>山線／海線取 TDX <code>TripLine</code>；宜蘭線、北迴、南迴、花東與各支線由停靠站推導；都沒有則顯示「縱貫線」。</small>
+        </span></label>
+        <label class="toggle"><input type="checkbox" id="rmkCars" checked><span class="t">
+          車輛數
+          <small>依車種編成推導（EMU3000／PP＝12 輛、EMU900＝10 輛、EMU800/700/500＝8 輛、太魯閣／普悠瑪＝8 輛、DMU＝9 輛）；型號不明顯示「–」，不估算。</small>
+        </span></label>
+        <label class="toggle"><input type="checkbox" id="rmkFlags" checked><span class="t">
+          服務標記
+          <small>身障、自行車、便當、哺乳室、行李、加班車等標記。</small>
+        </span></label>
+      </div>
+      <p class="hint">
+        <b>自動模式</b>是「整排同步輪播」：上方勾選幾種資訊就輪幾種（經由 → 車輛數 → 服務標記，每種停留 4 秒），
+        <b>同一時間所有列都顯示同一種資訊</b>，不會上面寫經由、下面寫幾節車廂；英文直接寫路線簡寫（Mtn.／S-Link／12 cars），不加 Via。
+        某班車在該項目沒有資料時<b>該格留空</b>（不再顯示孤零零的「–」）。要指定實際輛數，直接在「輛」欄填數字。<br>
+        <b>手動模式</b>則逐班輸入中／英備註（各 ≤100 字）：放得下一行顯示，放不下自動改成無縫跑馬燈；英文留空時 English 版回退顯示中文備註。人工備註會跟著班次存檔，自動同步也不會被 TDX 覆寫。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===== 分頁 2：顯示設定 ===== -->
+  <section class="pane" id="pane-display" hidden>
+    <div class="card">
+      <h2>月台編號</h2>
+      <div class="row2">
+        <div class="f"><label for="platform">月台編號</label>
+          <input type="text" id="platform" maxlength="12" placeholder="例如 1B">
+        </div>
+        <div class="f"><label for="platSide">顯示位置</label>
+          <select id="platSide">
+            <option value="left">左上角</option>
+            <option value="right">右上角</option>
+            <option value="both">左上＋右上（兩側都顯示）</option>
+          </select>
+        </div>
+        <div class="f"><label for="platColor">底色（方向）</label>
           <select id="platColor">
             <option value="north">藍色（北上／順行）</option>
             <option value="south">綠色（南下／逆行）</option>
           </select>
         </div>
-        <div class="field"><label for="stopsOrder">停靠站位置</label>
+        <div class="f"><label for="rowCount">顯示列數</label>
+          <select id="rowCount"><option>2</option><option>3</option><option>4</option></select>
+        </div>
+        <div class="f"><label for="departGrace">班次下架（離站緩衝）</label>
+          <select id="departGrace">
+            <option value="0">0 分鐘（發車當秒下架）</option>
+            <option value="1">1 分鐘</option>
+            <option value="2" selected>2 分鐘（預設）</option>
+            <option value="5">5 分鐘</option>
+          </select>
+          <p class="hint">表定時刻＋誤點過後再等這段緩衝才下架；TDX 回報「已離站」時一律當秒下架。</p>
+        </div>
+      </div>
+      <label class="toggle"><input type="checkbox" id="showPlatform" checked><span class="t">
+        <span id="showPlatformText">顯示左上角月台編號</span>
+        <small>左上、右上固定各留一格給月台編號；欄位位置固定不動，關閉時只隱藏徽章。</small>
+      </span></label>
+      <label class="toggle"><input type="checkbox" id="keepCancelled"><span class="t">
+        停駛班次保留到營運日結束
+        <small>未勾選（預設）時，停駛班次與一般班次一樣在表定＋緩衝後下架，與臺鐵 PIDS 慣例一致。</small>
+      </span></label>
+    </div>
+
+    <div class="card">
+      <h2>語言</h2>
+      <div class="f">
+        <span class="lbl">到站資訊</span>
+        <div class="lang-pill" id="langPill">
+          <button data-l="auto" class="on" type="button">自動輪替</button>
+          <button data-l="zh" type="button">中文</button>
+          <button data-l="en" type="button">English</button>
+        </div>
+      </div>
+      <div class="f">
+        <span class="lbl">跑馬燈</span>
+        <div class="lang-pill" id="tickerLangPill">
+          <button data-l="auto" class="on" type="button" title="整段訊息播完才切換語言">自動輪替</button>
+          <button data-l="zh" type="button">中文</button>
+          <button data-l="en" type="button">English</button>
+        </div>
+        <p class="hint">兩者可分別設定；跑馬燈會等整段訊息完整捲完設定的輪數才換語言，不會中途重播。</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>車種色彩識別</h2>
+      <div class="legend">
+        <div><b style="background:var(--c-orange)">莒光、自強</b><span>對號座、自由座</span></div>
+        <div><b style="background:var(--c-purple)">自強3000</b><span>普悠瑪、太魯閣（僅對號）</span></div>
+        <div><b style="background:#000;color:#fff;box-shadow:inset 0 0 0 1px #444">區間車</b><span>自由座（無色塊）</span></div>
+        <div><b style="background:var(--c-yellow)">觀光列車</b><span>特殊車種</span></div>
+      </div>
+      <p class="hint">
+        <b>狀態欄只會出現四種：</b>準點（白字，<code>RunningStatus=0</code> 且 <code>DelayTime=0</code>，抓不到即時資料時視同準點）、
+        晚N分（黃字，<code>RunningStatus=1</code> 或 <code>DelayTime&gt;0</code>）、
+        停駛（紅字，<code>SuspendedFlag=1</code> 或 <code>RunningStatus=2</code>）、
+        未知（灰字，連表定時刻都沒有）。
+      </p>
+      <details class="more">
+        <summary>列車動態小圓點的規則</summary>
+        <p class="hint">
+          時間欄前的上下兩點固定以 1 秒為一循環交替亮起，不隨停靠／進站變速。<br>
+          亮燈時機：列車已進入本站（<code>TrainStationStatus</code> 0/1）或表定時刻前 5 分鐘內；列車還在線上跑、已停駛或已離站時不亮。<br>
+          已離站的班次（<code>TrainStationStatus=2</code>，或表定時刻＋誤點已過「班次下架」緩衝）<b>直接從看板移除、由下一班遞補</b>，編輯區會灰掉並標「已離站・不上看板」。
+        </p>
+      </details>
+      <details class="more">
+        <summary>備註欄「經由」的判斷順序</summary>
+        <p class="hint">
+          ① TDX <code>TripLine</code>（1 山線／2 海線／3 成追線）→
+          ② 停靠站是否落在宜蘭線、北迴、南迴、花東或各支線 → ③ 都沒有則顯示「縱貫線」。最多同時顯示兩段路線。
+          （原本的手動「山／海」指定下拉已移除，一律依 TDX 資料推導。）
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===== 分頁 3：跑馬燈 ===== -->
+  <section class="pane" id="pane-ticker" hidden>
+    <div class="card">
+      <h2>跑馬燈內容</h2>
+      <div class="f"><label for="tickerZh">中文訊息</label><textarea id="tickerZh" rows="3"></textarea></div>
+      <div class="f"><label for="tickerEn">English message</label><textarea id="tickerEn" rows="3"></textarea></div>
+      <label class="toggle"><input type="checkbox" id="showStops" checked><span class="t">
+        加入第一列車停靠站
+        <small>停靠站會以「停靠站」樣式接在訊息之後或之前，依下方設定。</small>
+      </span></label>
+      <div class="row2">
+        <div class="f"><label for="stopsOrder">停靠站位置</label>
           <select id="stopsOrder">
             <option value="after">接在宣傳標語後</option>
             <option value="before">放在宣傳標語前</option>
           </select>
         </div>
-        <div class="field"><label for="tickerCycles">語言播放輪數</label>
+        <div class="f"><label for="tickerCycles">語言播放輪數</label>
           <select id="tickerCycles">
             <option value="1">1 輪（播完即換）</option>
             <option value="2">2 輪</option>
             <option value="3">3 輪</option>
           </select>
         </div>
-        <div class="field"><label for="tickerSpeed">捲動速度</label>
+        <div class="f"><label for="tickerSpeed">捲動速度</label>
           <select id="tickerSpeed">
             <option value="0.07">慢 0.7×</option>
             <option value="0.11">標準 1×</option>
@@ -355,35 +677,26 @@
           </select>
         </div>
       </div>
-      <div class="field check-field"><label><input type="checkbox" id="showPlatform" checked> 顯示左上角月台編號</label></div>
-      <div class="field"><label for="tickerZh">跑馬燈（中文）</label><input type="text" id="tickerZh"></div>
-      <div class="field"><label for="tickerEn">跑馬燈（English）</label><input type="text" id="tickerEn"></div>
-      <div class="field check-field"><label><input type="checkbox" id="showStops" checked> 跑馬燈加入第一列車停靠站</label></div>
       <div class="info-box">
         <div id="stopsInfo"></div>
         <div id="tickerStatus"></div>
       </div>
-      <h2>車種色彩識別</h2>
-      <div class="legend">
-        <div><b style="background:var(--c-orange)">莒光、自強</b>對號座、自由座</div>
-        <div><b style="background:var(--c-purple)">自強3000</b>普悠瑪、太魯閣（僅對號）</div>
-        <div><b style="background:#000;color:#fff;box-shadow:inset 0 0 0 1px #444">區間車</b>自由座（無色塊）</div>
-        <div><b style="background:var(--c-yellow)">觀光列車</b>特殊車種</div>
-      </div>
-      <p class="note">到站資訊與跑馬燈語言各自獨立；跑馬燈會等整段訊息完整捲完設定的輪數才換語言，不會中途重播。<br>狀態：準點白字、即將進站左側圓點交替亮起、晚點黃字；備註「山」「海」為行經山線或海線。</p>
     </div>
+  </section>
 
-    <div class="card card-full">
-      <h2>TDX 即時同步 <span id="syncStatusBadge" class="sync-badge off">未啟用</span></h2>
-      <div class="field-grid">
-        <div class="field"><label for="syncMode">同步模式</label>
+  <!-- ===== 分頁 4：TDX 同步 ===== -->
+  <section class="pane" id="pane-tdx" hidden>
+    <div class="card">
+      <h2>TDX 即時同步 <span class="sync-badge off" id="syncStatusBadge2">未啟用</span></h2>
+      <div class="row2">
+        <div class="f"><label for="syncMode">同步模式</label>
           <select id="syncMode">
             <option value="off">關閉</option>
             <option value="manual">手動同步</option>
             <option value="auto">自動即時同步</option>
           </select>
         </div>
-        <div class="field"><label for="syncStation">同步車站</label>
+        <div class="f"><label for="syncStation">同步車站</label>
           <select id="syncStation">
             <option value="4400">高雄 (Kaohsiung)・4400</option>
             <option value="1000">臺北 (Taipei)・1000</option>
@@ -400,9 +713,7 @@
             <option value="5000">屏東 (Pingtung)・5000</option>
           </select>
         </div>
-      </div>
-      <div class="field-grid">
-        <div class="field"><label for="syncInterval">自動同步間隔</label>
+        <div class="f"><label for="syncInterval">自動同步間隔</label>
           <select id="syncInterval">
             <option value="30">30 秒</option>
             <option value="60">1 分鐘</option>
@@ -410,30 +721,46 @@
             <option value="300">5 分鐘</option>
           </select>
         </div>
-        <div class="field"><label for="tdxClientId">TDX Client ID</label>
-          <input type="text" id="tdxClientId" placeholder="請輸入 TDX Client ID">
-        </div>
       </div>
-      <div class="field"><label for="tdxClientSecret">TDX Client Secret</label>
-        <input type="password" id="tdxClientSecret" placeholder="請輸入 TDX Client Secret" autocomplete="off">
-      </div>
-      <div class="field check-field"><label>
-        <input type="checkbox" id="syncMatchPlatform" checked>
+      <label class="toggle"><input type="checkbox" id="syncMatchPlatform" checked><span class="t">
         只顯示與顯示器「月台編號」相同的班次
-        <span style="color:#7f8b99;font-weight:400">（TDX 目前多數車站不回傳月台，勾選通常會退回全站班表）</span>
-      </label></div>
-      <div class="sync-row">
-        <button class="btn primary" id="btnSyncNow">立即同步</button>
-        <button class="btn" id="btnTestToken">測試連線</button>
+        <small>v3 的 Platform 常為空字串或 00（尚未確定），勾選時若全部落空會自動退回全站班表。</small>
+      </span></label>
+      <div class="acts">
+        <button class="btn primary" id="btnSyncNow" type="button">立即同步</button>
+        <button class="btn" id="btnTestToken" type="button">測試連線</button>
       </div>
       <div class="info-box">
         <div id="syncLastTime" class="sync-result">上次同步：--</div>
         <div id="syncMessage" class="sync-result">尚未同步</div>
         <div id="syncSource" class="sync-result" style="color:#7f8b99"></div>
       </div>
-      <p class="note">資料來源：交通部 TDX 資料交換平台（ptx.transportdata.tw）。自動模式會依設定間隔抓取即時班次並更新顯示器；手動模式僅於點擊「立即同步」時更新。請先至 TDX 網站申請 Client ID 與 Client Secret。</p>
     </div>
-  </div>
+
+    <div class="card">
+      <h2>TDX 金鑰 <span class="sub">選填，未填時自動使用免金鑰備援</span></h2>
+      <div class="row2">
+        <div class="f"><label for="tdxClientId">Client ID</label>
+          <input type="text" id="tdxClientId" placeholder="請輸入 TDX Client ID" autocomplete="off">
+        </div>
+        <div class="f"><label for="tdxClientSecret">Client Secret</label>
+          <input type="password" id="tdxClientSecret" placeholder="請輸入 TDX Client Secret" autocomplete="off">
+        </div>
+      </div>
+      <p class="hint">金鑰只存在瀏覽器 sessionStorage，關閉瀏覽器即清除；看板設定另存 localStorage。</p>
+      <details class="more">
+        <summary>資料來源與端點</summary>
+        <p class="hint">
+          · 即時狀態：<code>/api/basic/v3/Rail/TRA/StationLiveBoard/Station/{StationID}</code>（DelayTime、RunningStatus、Platform）<br>
+          · 列車動態：<code>/api/basic/v3/Rail/TRA/TrainLiveBoard</code>（TrainStationStatus，判斷進站中／已離站）<br>
+          · 當日班表：<code>/api/basic/v3/Rail/TRA/DailyStationTimetable/TrainDate/{date}?$filter=StationID eq '{id}'</code>（SuspendedFlag、ServiceType）<br>
+          · 停靠站：<code>/api/basic/v3/Rail/TRA/GeneralTrainTimetable/TrainNo/{TrainNo}</code><br>
+          有金鑰時走 TDX，未填金鑰時自動退回免 token 的 PTX（ptx.transportdata.tw）同路徑端點。自動模式依設定間隔更新；手動模式僅於點擊「立即同步」時更新。
+        </p>
+      </details>
+    </div>
+  </section>
+
 </div>
 
 <script>
@@ -443,7 +770,7 @@ const TYPES = {
   '區間快':   {en:'Fast Local',    c:'plain'},
   '自強號':   {en:'T.C. EXP',      c:'orange'},
   '莒光號':   {en:'Chu-Kuang',     c:'orange'},
-  '自強3000': {en:'T.C.3000 EXP',  c:'purple'},
+  '自強3000': {en:'T.C.3000',      c:'purple'},   /* 窄欄位用簡寫，原本 T.C.3000 EXP 放不下 */
   '普悠瑪':   {en:'Puyuma',        c:'purple'},
   '太魯閣':   {en:'Taroko',        c:'purple'},
   '觀光列車': {en:'Tourist Train', c:'yellow'}
@@ -460,23 +787,154 @@ const STATIONS = {
   '內灣':'Neiwan','竹東':'Zhudong','六家':'Liujia','千甲':'Qianjia','新莊':'Xinzhuang','菁桐':'Jingtong','平溪':'Pingxi','十分':'Shifen','大華':'Dahua','望古':'Wanggu','嶺腳':'Lingjiao','海科館':'National Museum of Marine Science and Technology','深澳':'Shenao'
 };
 const REMARK = {'山':'Mountain','海':'Coast','':''};
+
+/* ====== 經由（路線）與車輛數 ======
+   TDX 臺鐵規格沒有「經由」也沒有「車輛數」欄位：
+     · 只有 TripLine（山海線類型 0 不經山海線／1 山線／2 海線／3 成追線）
+     · CarFlag 是「是否可載小客車」，不是車廂數（只有高鐵有 CarConfig）
+   所以：經由 = TripLine ＋ 起訖站／停靠站是否跨北迴、南迴、支線來推導；
+        車輛數 = 車種編成推導（EMU900 10 輛、EMU800 8 輛…），並用 Note 校正，
+        推不出來就不顯示，避免顯示錯誤數字。
+   支線集合只放「支線專屬站」，與幹線共站的端點不放，才不會把幹線誤判成支線。 */
+const ROUTE_LINES = {
+  // 山線（竹南→彰化，經苗栗、臺中）：與海線共站的竹南、彰化不放
+  mountain: new Set(['造橋','豐富','苗栗','南勢','銅鑼','三義','泰安','后里','豐原','栗林','潭子','頭家厝','松竹','太原','精武','臺中','五權','大慶','烏日','新烏日','成功']),
+  // 海線（竹南→彰化，經後龍、大甲、清水）
+  coast: new Set(['談文','大山','後龍','龍港','白沙屯','新埔','通霄','苑裡','日南','大甲','臺中港','清水','沙鹿','龍井','大肚','追分']),
+  // 宜蘭線（八堵→蘇澳）
+  yilan: new Set(['暖暖','四腳亭','瑞芳','猴硐','三貂嶺','牡丹','雙溪','貢寮','福隆','石城','大里','大溪','龜山','外澳','頭城','頂埔','礁溪','四城','宜蘭','二結','中里','羅東','冬山','新馬','蘇澳新','蘇澳']),
+  // 北迴線（蘇澳新→花蓮）
+  northLink: new Set(['永樂','東澳','南澳','武塔','漢本','和平','和仁','崇德','新城','景美','北埔','花蓮']),
+  // 南迴線（枋寮→臺東）
+  southLink: new Set(['加祿','內獅','枋山','枋野','中央','古莊','大武','瀧溪','金崙','太麻里','知本','康樂','臺東']),
+  // 臺東線（花蓮→臺東）
+  eastMain: new Set(['吉安','志學','平和','壽豐','豐田','南平','鳳林','萬榮','光復','大富','富源','瑞穗','三民','玉里',
+    '東里','東竹','富里','池上','海端','關山','瑞和','鹿野','山里']),
+  // 支線（只放支線專屬站，與幹線共站的不放，避免誤判；臺鐵沒有「內湖支線」）
+  liujia: new Set(['竹科','六家']),
+  neiwan: new Set(['上員','榮華','竹東','橫山','九讚頭','合興','富貴','內灣']),
+  pingxi: new Set(['大華','望古','嶺腳','平溪','菁桐']),
+  shenao: new Set(['海科館','深澳','八斗子']),
+  shalun: new Set(['長榮大學','沙崙']),
+  jiji: new Set(['源泉','濁水','龍泉','集集','水里','車埕'])
+};
 const HEAD = {
   zh:{time:'時間',dest:'開往',no:'車次',type:'車種',status:'狀態',remark:'備註'},
   en:{time:'Time',dest:'Dest.',no:'No.',type:'Train Type',status:'Status',remark:'Rmk.'}
 };
 
+/* ====== 「經由」＝由 TripLine ＋ 起訖／停靠站推導 ====== */
+/* 判斷一組站名會經過哪些路線 */
+function linesThrough(names){
+  const hits = {};
+  for (const [key, set] of Object.entries(ROUTE_LINES)){
+    const n = names.filter(x => set.has(x)).length;
+    if (n) hits[key] = n;
+  }
+  return hits;
+}
+/* 經由英文直接寫路線名、不加 Via（Mtn.／N-Link／S-Link…），配合窄欄位用簡寫 */
+const VIA_LABEL = {
+  mountain:  {zh:'山線',   en:'Mtn.'},
+  coast:     {zh:'海線',   en:'Coast'},
+  yilan:     {zh:'宜蘭線', en:'Yilan'},
+  northLink: {zh:'北迴',   en:'N-Link'},
+  southLink: {zh:'南迴',   en:'S-Link'},
+  eastMain:  {zh:'花東',   en:'H-T'},
+  liujia:    {zh:'六家線', en:'Liujia'},
+  neiwan:    {zh:'內灣線', en:'Neiwan'},
+  pingxi:    {zh:'平溪線', en:'Pingxi'},
+  shenao:    {zh:'深澳線', en:'Shenao'},
+  shalun:    {zh:'沙崙線', en:'Shalun'},
+  jiji:      {zh:'集集線', en:'Jiji'},
+  trunk:     {zh:'縱貫線', en:'W.Trunk'}
+};
+/* 依序回傳要顯示的經由（最多兩段，避免擠爆備註欄）：
+   山線／海線 ← TripLine（官方欄位，最可靠）
+   北迴／南迴／花東 ← 起訖站或停靠站是否落在該區間
+   支線 ← 停靠站是否出現支線專屬站 */
+function viaKeys(train){
+  const keys = [];
+  // 1) 山線／海線：手動指定（編輯區下拉）優先，否則用官方 TripLine
+  if (train.rm === '山') keys.push('mountain');
+  else if (train.rm === '海') keys.push('coast');
+  else {
+    const trip = Number(train.tripLine);
+    if (trip === 1) keys.push('mountain');          // 1 山線
+    else if (trip === 2) keys.push('coast');        // 2 海線
+    else if (trip === 3) keys.push('mountain');     // 3 成追線（走山線端）
+  }
+  // 2) 跨線判斷：看起訖站與停靠站落在哪些線
+  const names = [train.start, train.dest, ...parseStops(train.stops)].filter(Boolean);
+  const hits = linesThrough(names);
+  if (hits.yilan && !keys.includes('mountain')) keys.push('yilan');
+  if (hits.northLink) keys.push('northLink');
+  if (hits.southLink) keys.push('southLink');
+  if (hits.eastMain) keys.push('eastMain');
+  // 3) 支線（支線專屬站才算）
+  for (const b of ['neiwan','pingxi','shenao','shalun','liujia','jiji']) if (hits[b]) keys.push(b);
+  /* 4) 一路到底、沒有跨線也沒有山海線的縱貫線班次：
+        起訖站都沒有命中任何特定線時，標「縱貫線」（純西部幹線） */
+  if (!keys.length){
+    const trunkish = [train.start, train.dest].filter(Boolean);
+    if (trunkish.length) keys.push('trunk');
+  }
+  return [...new Set(keys)].slice(0, 3);
+}
+
+/* ====== 「車輛數」＝車種編成推導，Note 可覆寫 ====== */
+/* 依 TrainTypeName 的型別判斷編成；來源：臺鐵公開編成
+   EMU3000 12 輛（騰雲座艙 6 車）、EMU900 10 輛、EMU800/700/500 8 輛、
+   柴聯 DMU 3 輛一組（自強柴聯多為 9 輛）、PP 推拉式 12 輛、莒光 8 輛、復興 8 輛、觀光列車 8 輛 */
+function carsFromType(typeName, note, typeId){
+  const t = String(typeName || '');
+  const id = String(typeId || '');
+  /* 先看車型（官方 TrainTypeName／TrainTypeID 都標得出來，最可靠）：
+     EMU3000 固定 12 輛、EMU900 10 輛、EMU800/700/500 8 輛、EMU300/1200 12 輛、
+     PP 推拉式 12 輛、柴聯 DMU 9 輛、太魯閣／普悠瑪 8 輛、莒光／復興 8 輛 */
+  const byType = () => {
+    if (/EMU\s*3000|3000\)/.test(t) || /^110[GHKM]$/.test(id)) return 12;
+    if (/EMU\s*900/.test(t)   || id === '113D') return 10;
+    if (/EMU\s*(800|700|500)/.test(t) || /^113[ABC]$/.test(id)) return 8;
+    if (/EMU\s*(1200|300)\b/.test(t)  || /^110[BC]$/.test(id)) return 12;
+    if (/推拉式|PP/.test(t)   || /^110[289A]$/.test(id)) return 12;
+    if (/DMU|柴聯/.test(t)    || /^110[DEF0]$/.test(id)) return 9;
+    if (/太魯閣|普悠瑪/.test(t) || /^110[17]$/.test(id)) return 8;
+    if (/觀光|郵輪/.test(t)) return 8;
+    if (/莒光/.test(t)) return 8;
+    if (/復興/.test(t)) return 8;
+    /* 只寫「區間／區間快／普快」而沒有型號時（EMU500/700/800/900 輛數不同），
+       依使用者指定不估算，回 0 → 備註顯示「–」。 */
+    return 0;
+  };
+  const known = byType();
+  if (known) return known;
+  /* 真的沒有車型可判斷時，才從 Note 的車廂敘述取線索：
+     像「第12車為親子車廂」→ 至少 12 輛。抓不到就回 0（備註顯示「–」）。 */
+  const nums = [...String(note || '').matchAll(/第\s*(\d+)\s*(?:[~～-]\s*(\d+)\s*)?(?:節|車)/g)]
+    .flatMap(m => [Number(m[1]), m[2] ? Number(m[2]) : 0]).filter(x => x > 0 && x <= 20);
+  return nums.length ? Math.max(...nums) : 0;
+}
+
+
+/* ============ （以下為誤刪後補回的核心區塊：狀態／縮放／繪製前置） ============ */
+
 /* ====== 初始顯示內容 ====== */
 const DEFAULT_STATE = {
-  platform:'1B', showPlatform:true, platColor:'north', rowCount:2,
+  platform:'1B', showPlatform:true, platColor:'north', platSide:'right', rowCount:2,
   showStops:true, stopsOrder:'after', tickerCycles:1, tickerSpeed:0.11,
+  // 備註欄要顯示哪些資訊（比照臺鐵 PIDS 的 Rmk. 欄）
+  remarkShows:{ via:true, cars:true, flags:false },
   tickerZh:'鐵路警察局提醒您：「你我都會是行人，駕駛遵守交通規則，禮讓行人。」　　列車進站時請勿跨越月台黃線，並注意月台間隙。　　',
   tickerEn:'Please stand behind the yellow line while the train is approaching, and mind the gap between the train and the platform.　　',
-  trains:[
-    {time:'09:58',dest:'嘉義',destEn:'',no:'2143',type:'區間',  st:'ontime',min:0,rm:'山',
-     stops:'高雄、新左營、楠梓、橋頭、岡山、臺南、永康、善化、新營、嘉義',stopsEn:''},
-    {time:'10:19',dest:'屏東',destEn:'',no:'109', type:'自強號',st:'ontime',min:0,rm:'山',
-     stops:'臺南、新左營、高雄、鳳山、九曲堂、屏東',stopsEn:''}
-  ]
+  /* 離站緩衝（分鐘）：0／1／2／5，預設 2 → 可在「顯示設定 → 班次下架」調整 */
+  departGrace:2,
+  /* 停駛班次：預設在表定＋緩衝後下架；勾選則整天保留示警（到營運日結束） */
+  keepCancelled:false,
+  /* 備註欄模式：auto（API 推導輪播）｜manual（逐班手動輸入） */
+  remarkMode:'auto',
+  /* 假資料清零：開機顯示「本月台暫無列車」，等同步或手動新增 */
+  trains:[]
 };
 
 let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
@@ -485,111 +943,385 @@ let uiLang = 'zh';          // 上方到站資訊目前語言
 let tickerMode = 'auto';    // 跑馬燈：auto(播完才換) | zh | en
 let tickLang = 'zh';        // 跑馬燈目前語言（與上方完全獨立）
 
-/* ====== 畫面縮放（以 1280px 寬設計） ====== */
+/* ====== 畫面縮放（以 1280px 寬設計） ======
+   主畫面依容器寬度縮放；設定頁另有一個 45% 的預覽，兩者共用同一份繪製結果。 */
 const screen = document.getElementById('screen');
 const wrap = document.getElementById('screenWrap');
+const screen2 = document.getElementById('settingsScreen');
+const wrap2 = document.getElementById('settingsScreenWrap');
 function screenHeight(){ return 72 + state.rowCount*96 + 80; }
+/* 主畫面與設定頁預覽都「依容器寬度縮放」，共用同一份繪製結果（不再有固定 45% 的預覽） */
 function rescale(){
+  const h = screenHeight();
   const s = (wrap.clientWidth/1280) || 1;   // 設定頁開啟、容器被移出畫面時不要變成 0
-  screen.style.height = screenHeight()+'px';
+  screen.style.height = h+'px';
   screen.style.transform = `scale(${s})`;
-  wrap.style.height = (screenHeight()*s)+'px';
+  wrap.style.height = (h*s)+'px';
+  if (screen2 && wrap2){
+    screen2.style.height = h+'px';
+    const s2 = (wrap2.clientWidth/1280) || 0.45;
+    screen2.style.transform = `scale(${s2})`;
+    wrap2.style.height = (h*s2)+'px';
+  }
 }
-window.addEventListener('resize', rescale);
+window.addEventListener('resize', ()=>{ rescale(); fitElsIn(screen); fitElsIn(screen2); });
 
-/* ====== 文字自動壓縮（仿 LED/LCD 看板橫向壓字，設定最小壓縮比） ====== */
-function fitAll(){
-  const MIN_SCALE = 0.6;   // 低於 0.6 不再壓扁，改縮小字級
-  screen.querySelectorAll('.fit').forEach(el=>{
-    el.style.transform='none';
-    el.style.fontSize='';
-    // 量「真正看得到的框」：狀態／備註的父層是 overflow:hidden 的 .cell，
-    // 直接用 parentElement.clientWidth 會被已裁切後的寬度限制，壓縮比永遠算不夠。
-    const cell = el.closest('.cell') || el.parentElement;
-    const box  = cell.clientWidth - 8;
-    const w    = el.scrollWidth;
-    if (w > box && box > 0){
-      const ratio = box/w;
-      if (ratio >= MIN_SCALE){
+/* ====== 文字自動壓縮（仿 LED/LCD 看板橫向壓字） ======
+   P0-2：可用寬度一定要扣掉「所有」padding 與留白，主畫面與設定頁預覽共用同一份量測。 */
+const FIT_MIN_SCALE = 0.6;    // 壓縮比下限：再小就不壓，改縮字級
+const FIT_MIN_FONT  = 12;     // 字級下限
+function cellBox(el){
+  const cell = el.closest('.cell') || el.parentElement;
+  if (!cell) return 0;
+  const cs = getComputedStyle(cell);
+  const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+  return cell.clientWidth - pad - 8;
+}
+function fitElsIn(root){
+  if (!root) return;
+  root.querySelectorAll('.fit').forEach(el=>{
+    if (el.classList.contains('is-marquee')) return;   // 跑馬燈不壓字
+    el.style.transform = 'none';
+    el.style.fontSize = '';
+    if (!el.textContent.trim()) return;
+    const box = cellBox(el);
+    if (!(box > 0)) return;
+    for (let guard = 0; guard < 4; guard++){
+      const w = el.scrollWidth;
+      if (w <= box) return;
+      const ratio = box / w;
+      if (ratio >= FIT_MIN_SCALE){
         el.style.transform = `scaleX(${ratio.toFixed(3)})`;
-      } else {
-        // 壓到 0.6 後，再以比例縮小字級
-        el.style.transform = `scaleX(${MIN_SCALE})`;
-        const newSize = Math.max(12, Math.round(parseFloat(getComputedStyle(el).fontSize) * ratio / MIN_SCALE));
-        el.style.fontSize = newSize + 'px';
+        return;
       }
+      const size = parseFloat(getComputedStyle(el).fontSize) || 34;
+      const next = Math.max(FIT_MIN_FONT, Math.floor(size * ratio / FIT_MIN_SCALE));
+      if (next >= size){ el.style.transform = `scaleX(${FIT_MIN_SCALE})`; return; }
+      el.style.fontSize = next + 'px';
+      el.style.transform = 'none';
     }
   });
 }
 
-/* ====== 繪製 ====== */
-const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function statusText(t,l){
-  if (t.st==='schedule') return l==='zh' ? '依班表' : 'Scheduled';
-  if (t.st==='delay')    return l==='zh' ? `晚${t.min}分` : `Delay ${t.min} min`;
-  if (t.st==='arriving') return l==='zh' ? '即將進站' : 'Arriving';
-  if (t.st==='cancel')   return l==='zh' ? '停駛' : 'Cancelled';
-  return l==='zh' ? '準點' : 'On Time';
+/* ====== 手動備註：短的一行顯示，長的走無縫跑馬燈（約 100px/s） ======
+   使用者若開啟「減少動態」，不捲動，改由 fitElsIn 壓字呈現整段。 */
+const MQ_SPEED	= 100;   // px/s（以 1280 為基準）
+function layoutManualRemarks(root){
+  if (!root || state.remarkMode !== 'manual') return;
+  root.querySelectorAll('.c-remark').forEach(cell=>{
+    const el = cell.querySelector('.fit');
+    if (!el) return;
+    const txt = el.dataset.text || '';
+    cell.classList.remove('has-marquee');
+    el.classList.remove('is-marquee');
+    el.style.removeProperty('--mq-dur');
+    el.innerHTML = esc(txt);
+    if (!txt) return;
+    const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const box = cellBox(el);
+    if (reduce || !(box > 0) || el.scrollWidth <= box) return;   // 放得下 → 靜態單行
+    const dur = Math.max(6, (el.scrollWidth + 56) / 100);
+    el.classList.add('is-marquee');
+    cell.classList.add('has-marquee');
+    el.style.setProperty('--mq-dur', dur.toFixed(2) + 's');
+    el.innerHTML = `<span class="mq-wrap"><span>${esc(txt)}</span><span aria-hidden="true">${esc(txt)}</span></span>`;
+  });
 }
-function sorted(){   // W-07：同步資料帶 ts，跨午夜（23:55→00:05）才會排對；手動輸入無日期仍退回字串排序
-  return [...state.trains].sort((a,b)=>
-    (Number.isFinite(a.ts) && Number.isFinite(b.ts))
-      ? a.ts - b.ts
-      : String(a.time).localeCompare(String(b.time)));
+
+/* ====== 繪製前置：跳脫、狀態文字 ====== */
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ===== 狀態文字（比照臺鐵 PIDS 的實際慣例）=====
+   月台上的顯示器，狀態欄只會出現這四種：
+     準點　晚點（晚N分）　停駛　未知
+   「進站中、停靠中、即將發車」不是文字，而是時間欄前面的小圓點（動畫固定一種）。
+   誤點分鐘數抓不到時，臺鐵 PIDS 會直接退回「準點」；本程式拿不到即時資料時同樣顯示準點。 */
+function statusText(t,l){
+  const zh = l==='zh';
+  if (t.st==='cancel')   return zh ? '停駛' : 'Cancelled';
+  if (t.st==='unknown')  return zh ? '未知' : 'Unknown';
+  if (t.st==='delay')    return zh ? (t.min > 0 ? `晚${t.min}分` : '晚點') : (t.min > 0 ? `Delay ${t.min} min` : 'Delayed');
+  return zh ? '準點' : 'On Time';
+}
+
+/* 時間欄前面的小圓點（動畫固定，不隨情境變速）：
+     · 顯示：列車已進入本站（TrainStationStatus 0/1），或表定時刻前 5 分鐘內
+     · 不顯示：列車還在線上跑、已停駛或已離站
+   已離站判定後就從看板移除，換下一班遞補。 */
+/* ====== 統一的「這班車何時開」基準（P0-1 的根本修正） ======
+   tsOf() 是全系統唯一的時間基準：下架、排序、圓點、跑馬燈第一列車、編輯區標籤全部用它。
+     t.ts  = 表定時刻（毫秒，不含誤點；同步與手動新增都會寫入）
+     ＋ 誤點分鐘 → 實際離站時刻
+   沒有 ts 的舊資料才用 time 推算（跨午夜修正）。 */
+function tsBase(t){
+  if (!t) return NaN;
+  if (Number.isFinite(t.ts)) return t.ts;
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t.time || '').trim());
+  if (!m) return NaN;
+  const base = Date.parse(`${taiwanDateString()}T${String(m[1]).padStart(2,'0')}:${m[2]}:00+08:00`);
+  return fixMidnight(base, Date.now());
+}
+function tsOf(t){
+  const base = tsBase(t);
+  if (!Number.isFinite(base)) return NaN;
+  return base + Math.max(0, Number(t.min) || 0) * 60000;
+}
+const DEPART_GRACE_OPTIONS = [0,1,2,5];
+function departGraceMin(){
+  const v = Number(state.departGrace);
+  return (Number.isFinite(v) && v >= 0) ? v : 2;     // 預設 2 分鐘
+}
+/* 營運日結束＝臺灣時間隔日 06:00（停駛班次可選擇整天保留示警） */
+function serviceDayEndMs(nowMs){
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const tw = new Date(now + 8*3600e3);
+  const start = Date.UTC(tw.getUTCFullYear(), tw.getUTCMonth(), tw.getUTCDate()) - 8*3600e3;
+  return start + 30*3600e3;
+}
+const SIGNAL_LEAD = 5;        // 表定時刻前幾分鐘 → 亮圓點
+
+/* 離站判定三層（L1 立即、L2 緩衝、L3 無時刻不上架） */
+function isDeparted(t, nowMs){
+  if (!t) return false;
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  // L1：即時資料明確回報「已離站」→ 當秒下架，不受緩衝影響
+  if (t.st === 'departed') return true;
+  const pos = t.trainPos;
+  if (pos && String(pos.stationId) === String(syncState.stationId) && Number(pos.status) === 2) return true;
+  // L3：連時刻都沒有的班次 → 不上架（舊版「無 ts 就永遠顯示」的 bug 就出在這裡）
+  const ts = tsOf(t);
+  if (!Number.isFinite(ts)) return true;
+  // 停駛：可選整天保留示警，否則同 L2
+  if (t.st === 'cancel' && state.keepCancelled) return now > serviceDayEndMs(now);
+  // L2：表定＋誤點＋離站緩衝到點 → 下架
+  return (ts - now) < -departGraceMin() * 60000;
+}
+function showSignal(t, nowMs){
+  if (t.st === 'cancel' || t.st === 'departed') return false;
+  const pos = t.trainPos;
+  if (pos && String(pos.stationId) === String(syncState.stationId)
+      && (Number(pos.status) === 0 || Number(pos.status) === 1)) return true;   // 列車已在本站
+  const ts = tsOf(t);
+  if (!Number.isFinite(ts)) return false;
+  return (ts - (Number.isFinite(nowMs) ? nowMs : Date.now())) <= SIGNAL_LEAD*60000;
+}
+/* 排序：一律走 tsOf（跨午夜 23:55→00:05 才排得對）；完全沒有時刻的排最後 */
+function sorted(){
+  return [...state.trains].sort((a,b)=>{
+    const ta = tsOf(a), tb = tsOf(b);
+    if (Number.isFinite(ta) && Number.isFinite(tb)) return ta - tb;
+    if (Number.isFinite(ta)) return -1;
+    if (Number.isFinite(tb)) return 1;
+    return String(a.time).localeCompare(String(b.time));
+  });
+}
+/* 看板簽章：排序後前 N 班的「車次|ts|狀態|誤點」。每秒比對，
+   班次離站的當秒簽章就會改變 → 立即重繪、下一班遞補（不再等 4 秒輪播）。 */
+function boardSignature(nowMs){
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const list = sorted().filter(t => !isDeparted(t, now)).slice(0, state.rowCount);
+  return `${uiLang}|${state.rowCount}|` + list
+    .map(t => `${t.no}|${Math.round(tsOf(t) || 0)}|${t.st}|${Number(t.min) || 0}`).join(',');
+}
+function firstBoardTrain(nowMs){
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  return sorted().find(t => !isDeparted(t, now)) || null;
+}
+
+/* ====== 備註欄（Rmk.）======
+   比照臺鐵 PIDS：顯示「經由」與「車輛數」；英文版用簡寫，避免擠爆欄位。
+   顯示順序：經由 → 車輛數 → 身障／自行車／餐旅等服務標記 */
+const FLAG_LABEL = {
+  wheelchair:{zh:'身障',   en:'WC'},
+  bike:      {zh:'自行車', en:'Bike'},
+  dining:    {zh:'便當',   en:'Meal'},
+  breastfeed:{zh:'哺乳室', en:'Nurse'},
+  package:   {zh:'行李',   en:'Lugg'},
+  extra:     {zh:'加班車', en:'Extra'}
+};
+
+/* 備註欄有兩種模式：
+     自動（預設）：以「同一種資訊」為單位整排輪播——經由 → 車輛數 →（服務標記），
+                   每個項目停留 4 秒，同一時間看板上所有列都顯示同一種資訊，
+                   不會出現「上面寫經由、下面寫幾節車廂」。
+     手動：逐班輸入中／英備註，短的一行顯示、長的走跑馬燈。
+   共同原則：「沒有資料就不顯示」——車型不明的輛數不會冒出孤零零的「–」。 */
+const REMARK_CATS = ['via','cars','flags'];
+const REMARK_CYCLE_SEC = 4;        // 每一種資訊停留幾秒
+/* 目前開啟（要輪播）的資訊種類，順序固定：經由 → 車輛數 → 服務標記 */
+function activeRemarkCats(){
+  const show = state.remarkShows || {via:true, cars:true, flags:false};
+  return REMARK_CATS.filter(k => show[k] !== false);
+}
+/* 全站共用的輪播指針：同一秒所有列拿到同一個種類。
+   傳入看板上的班次時，會跳過「整排都沒有資料」的種類，避免整個備註欄一起變成「-」。 */
+const REMARK_EMPTY = '-';
+function remarkCatAt(nowMs, trains){
+  let cats = activeRemarkCats();
+  if (!cats.length) return null;
+  if (Array.isArray(trains) && trains.length){
+    const withData = cats.filter(c => trains.some(t => remarkCatText(t, uiLang, c)));
+    if (withData.length) cats = withData;
+  }
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const tick = Math.floor(Math.floor(now / 1000) / REMARK_CYCLE_SEC);
+  return cats[((tick % cats.length) + cats.length) % cats.length];
+}
+/* 單一班次在某一種類下要顯示的文字；沒有資料就回空字串 */
+function remarkCatText(t, l, cat){
+  if (!t || !cat) return '';
+  const zh = l === 'zh';
+  if (cat === 'via'){
+    const keys = viaKeys(t).slice(0, 2);              // 最多兩段，避免擠爆欄位
+    const names = keys.map(k => VIA_LABEL[k] ? (zh ? VIA_LABEL[k].zh : VIA_LABEL[k].en) : '').filter(Boolean);
+    return names.join(zh ? '・' : '/');
+  }
+  if (cat === 'cars'){
+    const cars = Number(t.cars) || carsFromType(t.typeRaw || t.type, t.note, t.typeId);
+    return cars > 0 ? (zh ? `${cars}輛` : `${cars} cars`) : '';
+  }
+  if (cat === 'flags' && t.flags){
+    const f = Object.entries(t.flags).filter(([k,v]) => v && FLAG_LABEL[k])
+      .map(([k]) => zh ? FLAG_LABEL[k].zh : FLAG_LABEL[k].en);
+    return f.length ? f.join(zh ? '・' : '/') : '';
+  }
+  return '';
+}
+/* 編輯區預覽：列出這班車在自動模式下「可能出現」的內容（依輪播順序） */
+function remarkPages(t, l){
+  if (state.remarkMode === 'manual'){
+    const zh = String(t.remark || '').trim();
+    const en = String(t.remarkEn || '').trim();
+    const txt = l === 'zh' ? zh : (en || zh);          // EN 留空 → 回退顯示中文
+    return txt ? [txt] : [];                            // 未填 → 欄位留空
+  }
+  return activeRemarkCats().map(c => remarkCatText(t, l, c)).filter(Boolean);
+}
+/* 看板上要顯示的備註文字（自動模式：整排同步；手動模式：單一內容）。
+   沒有資料一律顯示「-」，備註欄不留空白。 */
+function remarkTextFor(t, l, cat){
+  if (state.remarkMode === 'manual'){
+    const zh = String(t.remark || '').trim();
+    const en = String(t.remarkEn || '').trim();
+    const txt = l === 'zh' ? zh : (en || zh);
+    return txt || REMARK_EMPTY;
+  }
+  return remarkCatText(t, l, cat) || REMARK_EMPTY;
+}
+function remarkTextAt(t, l, nowMs){
+  return remarkTextFor(t, l, remarkCatAt(nowMs, state.trains));
+}
+function remarkText(t, l, nowMs){ return remarkTextAt(t, l, nowMs); }
+
+/* 月台編號：左上、右上各有一格固定的預留位置（.plat.pos-left／.pos-right），
+   依設定顯示左側、右側或兩側；空值或關閉時整塊隱藏，並讓左右邊欄收回。 */
+const PLAT_SIDES = ['left','right','both'];
+function platSide(){ return PLAT_SIDES.includes(state.platSide) ? state.platSide : 'left'; }
+/* 勾選項文字跟著「左上角／右上角／兩側」設定變動 */
+function syncPlatformLabel(){
+  const el = document.getElementById('showPlatformText');
+  if (el) el.textContent = `顯示${{left:'左上角', right:'右上角', both:'左上＋右上'}[platSide()]}月台編號`;
+}
+/* 徽章寬度固定，字數多時自動縮小字級（全形字算 1 格、半形算 0.64 格），不會撐破預留位置 */
+function platFontSize(text){
+  const units = [...String(text)].reduce((n,ch)=> n + (ch.charCodeAt(0) > 0x2E7F ? 1 : 0.64), 0) || 1;
+  return Math.max(10, Math.min(30, Math.floor(54 / units)));
+}
+
+function renderPlatform(){
+  const side = platSide();
+  const text = String(state.platform || '').trim();
+  const on   = !!(state.showPlatform && text);
+  [['plat','platR','head'],['plat2','plat2R','head2']].forEach(([lid,rid,hid])=>{
+    const head = document.getElementById(hid);
+    [[lid,'left'],[rid,'right']].forEach(([id,pos])=>{
+      const el = document.getElementById(id);
+      if (!el) return;
+      const show = on && (side === 'both' || side === pos);
+      el.className = `plat pos-${pos}${show ? '' : ' is-hidden'}`;
+      el.textContent = show ? text : '';
+      el.style.background = `var(--c-${state.platColor})`;
+      el.style.fontSize = platFontSize(text) + 'px';
+    });
+    const scr = head && head.closest('.screen');
+    if (scr) {
+      scr.classList.toggle('has-plat', on);
+      scr.classList.toggle('plat-on-left', on && (side === 'left' || side === 'both'));
+    }
+  });
 }
 
 function render(){
+  renderInto('head', 'rows');
+  renderInto('head2', 'rows2');
+  rescale();
+  layoutManualRemarks(document.getElementById('rows'));
+  layoutManualRemarks(document.getElementById('rows2'));
+  fitElsIn(screen);
+  fitElsIn(screen2);
+}
+
+/* 把看板畫進指定容器：主畫面（head／rows）與設定頁預覽（head2／rows2）共用同一份邏輯，
+   設定頁看到的預覽因此永遠與實際輸出完全一致。 */
+function renderInto(headId, rowsId){
+  const headEl = document.getElementById(headId);
+  const rowsEl = document.getElementById(rowsId);
+  if (!headEl || !rowsEl) return;
   const l = uiLang, H = HEAD[l];
-  const head = document.getElementById('head');
-  head.classList.toggle('no-platform', !(state.showPlatform && String(state.platform).trim()));
+  const head = headEl;
   head.innerHTML = `
-    <div class="plat ${state.showPlatform && String(state.platform).trim() ? '' : 'is-hidden'}" style="background:var(--c-${state.platColor})">${esc(state.platform)}</div>
     <div class="lbl c-time">${H.time}</div>
     <div class="lbl c-dest">${H.dest}</div>
-    <div class="lbl c-no">${H.no}</div>
-    <div class="lbl c-type">${H.type}</div>
-    <div></div>
+    <div class="th-train"><div class="lbl c-no">${H.no}</div><div class="lbl c-type">${H.type}</div></div>
     <div class="lbl c-status">${H.status}</div>
     <div class="lbl c-remark">${H.remark}</div>`;
   if (l==='en') head.style.fontSize='25px'; else head.style.fontSize='';
+  renderPlatform();
 
-  const list = sorted().slice(0, state.rowCount);
+  /* 已離站的班次不再留在看板上：過濾後由下一班自動遞補，
+     所以「顯示 2 列」永遠是最接近的 2 班還沒開走的車。 */
+  const nowMs = Date.now();
+  const list = sorted().filter(t => !isDeparted(t, nowMs)).slice(0, state.rowCount);
+  // 備註種類由「整排」共同決定一次，所有列才會顯示同一種資訊
+  const boardCat = state.remarkMode === 'manual' ? null : remarkCatAt(nowMs, list);
   let html = '';
   list.forEach(t=>{
     const T = TYPES[t.type] || {en:t.type,c:'plain'};
     const dest = l==='zh' ? t.dest : (String(t.destEn||'').trim() || STATIONS[t.dest] || t.dest);
     const type = l==='zh' ? t.type : T.en;
-    const rm = l==='zh' ? t.rm : (REMARK[t.rm] ?? t.rm);
-    const stCls = t.st==='delay'?'st-delay':t.st==='cancel'?'st-cancel':'';
-    const enSmall = l==='en' ? 'style="font-size:40px;letter-spacing:0"' : '';
+    // 備註：自動模式整排同步輪播（同時間所有列顯示同一種資訊）；沒有資料顯示「-」
+    const rm = remarkTextFor(t, l, boardCat);
+    // 狀態文字只有 準點／晚點／停駛／未知；進站、停靠、即將發車改用左側圓點動畫
+    const stText = statusText(t, l);
+    const stCls = t.st==='delay'?'st-delay':t.st==='cancel'?'st-cancel':(t.st==='unknown'?'st-unknown':'');
+    const signal = showSignal(t, nowMs);
     html += `<div class="row grid">
-      ${t.st==='arriving'?'<span class="arrival-signal" aria-hidden="true"><i class="upper-dot"></i><i class="lower-dot"></i></span>':''}
+      ${signal?'<span class="arrival-signal" aria-hidden="true"><i class="upper-dot"></i><i class="lower-dot"></i></span>':''}
       <div class="cell c-time">${esc(t.time)}</div>
-      <div class="cell c-dest" ${enSmall}><span class="fit">${esc(dest)}</span></div>
+      <div class="cell c-dest"><span class="fit">${esc(dest)}</span></div>
       <div class="train ${T.c}">
         <div class="no"><span class="fit">${esc(t.no)}</span></div>
-        <div class="type" ${enSmall}><span class="fit">${esc(type)}</span></div>
+        <div class="type"><span class="fit">${esc(type)}</span></div>
       </div>
-      <div></div>
-      <div class="cell c-status ${stCls}" ${enSmall}><span class="fit">${statusText(t,l)}</span></div>
-      <div class="cell c-remark" ${enSmall}><span class="fit">${esc(rm)}</span></div>
+      <div class="cell c-status ${stCls}"><span class="fit">${esc(stText)}</span></div>
+      <div class="cell c-remark"><span class="fit" data-text="${esc(rm)}">${esc(rm)}</span></div>
     </div>`;
   });
   for (let i=list.length;i<state.rowCount;i++){
     html += `<div class="empty">${i===0 ? (l==='zh'?'本月台暫無列車':'No scheduled trains') : ''}</div>`;
   }
-  document.getElementById('rows').innerHTML = html;
-  rescale();
-  fitAll();
+  rowsEl.innerHTML = html;
 }
 
 /* ====== 跑馬燈：宣傳標語 ＋ 上方第一列車停靠站（語言與上方獨立） ====== */
 const tickerEl = document.getElementById('ticker');
+const tickerEl2 = document.getElementById('ticker2');   // 設定頁預覽的跑馬燈，與主畫面同步
 let tx = 0, tickerKey = '', tickerUnit = 0, cycleCount = 0;
 function parseStops(s){
   return String(s ?? '').split(/[、,，;；\/|\n\r]+/).map(x=>x.trim()).filter(Boolean);
 }
-function firstTrain(){ return sorted()[0] || null; }
+/* 跑馬燈要報的「第一列車」＝看板上第一列，所以同樣要排除已離站的班次 */
+function firstTrain(){ return firstBoardTrain(); }   // 與看板共用同一份「還沒開走的第一班」判斷
 function tickerContent(l){
   const slogan = String((l==='zh' ? state.tickerZh : state.tickerEn) ?? '').replace(/[\s　]+$/,'');
   const parts = [];
@@ -640,10 +1372,12 @@ function setTicker(keepPosition, force){
   if (txt !== tickerKey){
     tickerKey = txt;
     tickerEl.textContent = txt;
+    if (tickerEl2) tickerEl2.textContent = txt;
     const unit = tickerEl.scrollWidth || 1;
     const view = tickerEl.parentElement.clientWidth || 1050;
     const n = Math.max(2, Math.ceil(view/unit) + 1);   // 重複足夠次數，確保無縫且不留空檔
     tickerEl.textContent = txt.repeat(n);
+    if (tickerEl2) tickerEl2.textContent = tickerEl.textContent;
     tickerUnit = tickerEl.scrollWidth / n;
     cycleCount = 0;
     if (keepPosition && tickerUnit > 0) tx = -(((-tx) % tickerUnit + tickerUnit) % tickerUnit);
@@ -675,15 +1409,37 @@ function loop(now){
     }
   }
   tickerEl.style.transform = `translate(${tx}px,-50%)`;
+  if (tickerEl2) tickerEl2.style.transform = `translate(${tx}px,-50%)`;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
 /* ====== 時鐘 ====== */
+let lastClockMin = '', lastRemarkSlot = -1, lastBoardSig = '';
 function tick(){
   const d = new Date();
-  const [h, m] = taiwanTimeString(d).split(':');
-  document.getElementById('clock').innerHTML = `${h}<span class="colon">:</span>${m}`;
+  const hm = taiwanTimeString(d);                 // 'HH:mm'
+  const [h, m] = hm.split(':');
+  /* 時鐘只在「換分鐘」時重寫內容，冒號動畫不會每秒重播 */
+  if (hm !== lastClockMin){
+    lastClockMin = hm;
+    const clockHTML = `${h}<span class="colon">:</span>${m}`;
+    const c1 = document.getElementById('clock');
+    if (c1) c1.innerHTML = clockHTML;
+    const c2 = document.getElementById('clock2');
+    if (c2) c2.innerHTML = clockHTML;
+  }
+  /* 每 4 秒輪播一則備註；另外每秒檢查看板簽章——
+     班次離站的「當秒」簽章就會改變，於是立即重繪、下一班遞補。 */
+  const slot = Math.floor(Date.now() / (REMARK_CYCLE_SEC * 1000));
+  const sig  = boardSignature(Date.now());
+  if (slot !== lastRemarkSlot || sig !== lastBoardSig){
+    const trainChanged = sig !== lastBoardSig;
+    lastRemarkSlot = slot;
+    lastBoardSig = sig;
+    render();
+    if (trainChanged) setTicker(true);            // 跑馬燈第一列車換人 → 同步換內容
+  }
 }
 setInterval(tick, 1000); tick();
 
@@ -747,38 +1503,69 @@ function buildEditor(force){
     return;
   }
   pendingEditRebuild = false;
-  editRows.innerHTML = state.trains.map((t,i)=>`
-    <tr class="main" data-i="${i}">
-      <td><input class="w-time" type="text" inputmode="numeric" maxlength="8" placeholder="HH:MM" data-k="time" value="${esc(t.time)}"></td>
-      <td><select data-k="dest">${destinationOptions(t.dest)}</select></td>
-      <td><input data-k="destEn" value="${esc(t.destEn||'')}" placeholder="留空使用內建英譯"></td>
-      <td><input class="w-no" data-k="no" value="${esc(t.no)}"></td>
-      <td><select data-k="type">${Object.keys(TYPES).map(k=>`<option ${k===t.type?'selected':''}>${k}</option>`).join('')}</select></td>
-      <td><select data-k="st">
-        <option value="ontime" ${t.st==='ontime'?'selected':''}>準點</option>
-        <option value="schedule" ${t.st==='schedule'?'selected':''}>依班表（無即時狀態）</option>
-        <option value="delay" ${t.st==='delay'?'selected':''}>晚點</option>
-        <option value="arriving" ${t.st==='arriving'?'selected':''}>即將進站</option>
-        <option value="cancel" ${t.st==='cancel'?'selected':''}>停駛</option>
-      </select></td>
-      <td><input class="w-min" type="number" min="0" max="999" data-k="min" value="${t.min}"></td>
-      <td><select class="w-rm" data-k="rm">
-        <option value="山" ${t.rm==='山'?'selected':''}>山</option>
-        <option value="海" ${t.rm==='海'?'selected':''}>海</option>
-        <option value="" ${t.rm===''?'selected':''}>—</option>
-      </select></td>
-      <td><button class="btn icon" data-del="${i}" title="刪除">✕</button></td>
-    </tr>
-    <tr class="sub" data-i="${i}">
-      <td colspan="9">
-        <div class="stops-line">
-          <span>停靠站</span><input data-k="stops" value="${esc(t.stops||'')}" placeholder="以、或逗號分隔">
-          <span>English</span><input data-k="stopsEn" value="${esc(t.stopsEn||'')}" placeholder="留空使用內建英譯">
-        </div>
-      </td>
-    </tr>`).join('');
+  const nowMs = Date.now();
+  const manualRmk = state.remarkMode === 'manual';
+  editRows.innerHTML = state.trains.map((t,i)=>{
+    const gone = isDeparted(t, nowMs);
+    const typeNow = t.typeRaw || t.type;
+    const carsAuto = carsFromType(typeNow, t.note, t.typeId) || 0;
+    const rmLen = [...String(t.remark||'')].length;
+    return `
+    <div class="tcard ${gone?'is-departed':''}" data-i="${i}">
+      <div class="tcard-top">
+        <div class="idx">${i+1}</div>
+        <div class="mini"><label>時間</label>
+          <input class="w-time" type="text" inputmode="numeric" maxlength="8" placeholder="HH:MM" data-k="time" value="${esc(t.time)}"></div>
+        <div class="mini"><label>開往目的地</label>
+          <select data-k="dest">${destinationOptions(t.dest)}</select></div>
+        <div class="mini"><label>車次</label>
+          <input class="w-no" data-k="no" value="${esc(t.no)}"></div>
+        <div class="mini"><label>車種</label>
+          <select data-k="type">${Object.keys(TYPES).map(k=>`<option ${k===t.type?'selected':''}>${k}</option>`).join('')}</select></div>
+        <div class="mini"><label>狀態</label>
+          <select data-k="st">
+            <option value="ontime" ${t.st==='ontime'?'selected':''}>準點</option>
+            <option value="delay" ${t.st==='delay'?'selected':''}>晚點</option>
+            <option value="cancel" ${t.st==='cancel'?'selected':''}>停駛</option>
+            <option value="unknown" ${t.st==='unknown'?'selected':''}>未知</option>
+          </select></div>
+        <div class="mini"><label>晚(分)</label>
+          <input class="w-min" type="number" min="0" max="999" data-k="min" value="${t.min}"></div>
+        <div class="mini"><label>輛</label>
+          <input class="w-cars" type="number" min="0" max="20" data-k="cars" value="${t.cars||''}"
+                 placeholder="${carsAuto||'—'}" title="車輛數；留空＝依車種編成自動推導（灰色數字為目前推導結果）"></div>
+        <button class="del" data-del="${i}" title="刪除這班次" type="button">✕</button>
+      </div>
+      <div class="tcard-mid">
+        <div class="mini"><label>英文目的地 <span class="opt">選填</span></label>
+          <input data-k="destEn" value="${esc(t.destEn||'')}" placeholder="留空使用內建英譯"></div>
+        <div class="mini"><label>停靠站</label>
+          <input data-k="stops" value="${esc(t.stops||'')}" placeholder="以、或逗號分隔"></div>
+        <div class="mini"><label>停靠站 English <span class="opt">選填</span></label>
+          <input data-k="stopsEn" value="${esc(t.stopsEn||'')}" placeholder="留空使用內建英譯"></div>
+      </div>
+      ${manualRmk ? `
+      <div class="tcard-rmk">
+        <div class="mini"><label>備註（中文）
+            <span class="cnt ${rmLen>=100?'full':''}" data-cnt="${i}">${rmLen}/100</span></label>
+          <input data-k="remark" maxlength="100" value="${esc(t.remark||'')}" placeholder="例如：本列車為親子車廂，第 12 車可停放自行車"></div>
+        <div class="mini"><label>備註 English <span class="opt">選填</span></label>
+          <input data-k="remarkEn" maxlength="100" value="${esc(t.remarkEn||'')}" placeholder="留空則 English 顯示中文備註"></div>
+      </div>` : ''}
+      <div class="tcard-bot">
+        <div class="rmk-cell" title="備註欄會顯示這些內容"><b>備註</b>　${esc(remarkPages(t,'zh').join('  ⇄  ')||'—')}</div>
+        ${gone?'<span class="gone-tag">已離站・不上看板</span>':''}
+      </div>
+    </div>`;
+  }).join('');
   document.getElementById('platform').value = state.platform;
+  document.getElementById('platSide').value = platSide();
+  syncPlatformLabel();
   document.getElementById('showPlatform').checked = !!state.showPlatform;
+  const rmk = state.remarkShows || {};
+  document.getElementById('rmkVia').checked   = rmk.via   !== false;
+  document.getElementById('rmkCars').checked  = rmk.cars  !== false;
+  document.getElementById('rmkFlags').checked = rmk.flags !== false;
   document.getElementById('platColor').value = state.platColor;
   document.getElementById('rowCount').value = state.rowCount;
   document.getElementById('tickerZh').value = state.tickerZh;
@@ -787,6 +1574,23 @@ function buildEditor(force){
   document.getElementById('stopsOrder').value = state.stopsOrder || 'after';
   document.getElementById('tickerCycles').value = state.tickerCycles;
   document.getElementById('tickerSpeed').value = state.tickerSpeed;
+  const dg = document.getElementById('departGrace');
+  if (dg) dg.value = String(departGraceMin());
+  const kc = document.getElementById('keepCancelled');
+  if (kc) kc.checked = !!state.keepCancelled;
+  syncRemarkModeUI();
+  document.querySelectorAll('#remarkModeSeg button')
+    .forEach(b => b.classList.toggle('on', b.dataset.m === state.remarkMode));
+  updateTrainCount();
+}
+/* 備註模式切換時：自動推導勾選區淡化＋不可點（版面不跳動），手動輸入框只在手動模式出現 */
+function syncRemarkModeUI(){
+  const manual = state.remarkMode === 'manual';
+  const grp = document.getElementById('rmkAutoGroup');
+  if (grp){
+    grp.classList.toggle('is-dim', manual);
+    grp.setAttribute('aria-disabled', manual ? 'true' : 'false');
+  }
 }
 function validateTime(val){
   return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val);
@@ -800,7 +1604,7 @@ function normalizeTime(val){
   return `${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
 }
 function updateTrainFromEditor(e){
-  const tr = e.target.closest('tr'); const k = e.target.dataset.k; if(!tr||!k) return;
+  const tr = e.target.closest('.tcard'); const k = e.target.dataset.k; if(!tr||!k) return;
   const t = state.trains[+tr.dataset.i];
   let v = e.target.value;
   if(k==='time'){
@@ -811,16 +1615,36 @@ function updateTrainFromEditor(e){
     }
     e.target.classList.remove('invalid');
     if (e.target.value !== v) e.target.value = v;   // W-11：9:5 → 09:05，回寫讓使用者看得見
-    // 手動改時間後重算排序用時間戳，否則同步帶進來的舊 ts 會讓這班車排在原位
-    const parsed = parseTDXTime(v, taiwanDateString());
-    const fixed = fixMidnight(parsed.ts, Date.now());
-    if (Number.isFinite(fixed)) t.ts = fixed + (Number(t.min)||0)*60000;
+    // 手動改時間後重算時間基準（只存表定時刻，誤點由 tsOf 另外加），
+    // 否則同步帶進來的舊 ts 會讓這班車排在原位、也不會準時下架。
+    const base = tsBase({time:v});
+    if (Number.isFinite(base)) t.ts = base;
     else delete t.ts;
   }
+  if (k==='remark' || k==='remarkEn'){
+    t[k] = [...String(v||'')].slice(0,100).join('');
+    if (e.target.value !== t[k]) e.target.value = t[k];
+    const cnt = tr.querySelector(`[data-cnt="${tr.dataset.i}"]`);
+    if (cnt){
+      const n = [...t[k]].length;
+      cnt.textContent = `${n}/100`;
+      cnt.classList.toggle('full', n >= 100);
+    }
+    render(); saveSettings();
+    return;
+  }
+  if (k==='cars'){
+    const n = parseInt(e.target.value||'',10);
+    t.cars = Number.isFinite(n) && n > 0 ? n : '';
+    if (t.cars) t.human = {...(t.human||{}), cars:true};
+    render(); saveSettings(); return;
+  }
   t[k] = k==='min' ? Math.max(0, parseInt(e.target.value||'0',10)||0) : v;
+  // 人工改過的欄位留旗標 → 自動同步時不會被 TDX 覆寫
+  if (['dest','destEn','type','stops','stopsEn','rm','no'].includes(k)) t.human = {...(t.human||{}), [k]:true};
   if (k==='min' && t.min>0 && t.st==='ontime'){ t.st='delay'; tr.querySelector('[data-k=st]').value='delay'; }
   if (k==='min' && t.min===0 && t.st==='delay'){ t.st='ontime'; tr.querySelector('[data-k=st]').value='ontime'; }
-  render(); setTicker(true);
+  render(); setTicker(true); saveSettings();
 }
 editRows.addEventListener('input', e=>{
   if (e.target.matches('input[data-k]')) updateTrainFromEditor(e);
@@ -833,18 +1657,46 @@ editRows.addEventListener('focusout', ()=>{
 });
 editRows.addEventListener('click', e=>{
   const b = e.target.closest('[data-del]'); if(!b) return;
-  state.trains.splice(+b.dataset.del,1); buildEditor(true); render(); setTicker(true);
+  state.trains.splice(+b.dataset.del,1); buildEditor(true); render(); setTicker(true); saveSettings();
 });
 document.getElementById('addRow').onclick = ()=>{
   const lastT = sorted().pop();
   let [h,m] = (lastT?lastT.time:'10:00').split(':').map(Number);
   m += 15; h += Math.floor(m/60); m%=60; h%=24;
-  state.trains.push({time:`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`,dest:'高雄',destEn:'',no:'3000',type:'區間',st:'ontime',min:0,rm:'山',stops:'',stopsEn:''});
-  buildEditor(true); render(); setTicker(true);
+  const time = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+  const row = {time, dest:'高雄', destEn:'', no:'3000', type:'區間', st:'ontime', min:0, rm:'山',
+               stops:'', stopsEn:'', manual:true};        // manual：自動同步時不會被洗掉
+  row.ts = tsBase(row);
+  state.trains.push(row);
+  buildEditor(true); render(); setTicker(true); saveSettings();
 };
+document.getElementById('remarkModeSeg').addEventListener('click', e=>{
+  const b = e.target.closest('button'); if (!b) return;
+  if (state.remarkMode === b.dataset.m) return;
+  state.remarkMode = b.dataset.m;
+  document.querySelectorAll('#remarkModeSeg button').forEach(x=>x.classList.toggle('on', x===b));
+  syncRemarkModeUI();
+  buildEditor(true); render(); setTicker(true); saveSettings();
+});
+const departGraceEl = document.getElementById('departGrace');
+if (departGraceEl) departGraceEl.addEventListener('change', e=>{
+  state.departGrace = DEPART_GRACE_OPTIONS.includes(+e.target.value) ? +e.target.value : 2;
+  buildEditor(true); render(); saveSettings();
+});
+const keepCancelledEl = document.getElementById('keepCancelled');
+if (keepCancelledEl) keepCancelledEl.addEventListener('change', e=>{
+  state.keepCancelled = !!e.target.checked;
+  buildEditor(true); render(); saveSettings();
+});
 document.getElementById('showPlatform').addEventListener('change', e=>{
   state.showPlatform = e.target.checked;
   render(); saveSettings();
+});
+[['rmkVia','via'],['rmkCars','cars'],['rmkFlags','flags']].forEach(([id,key])=>{
+  document.getElementById(id).addEventListener('change', e=>{
+    state.remarkShows = {...(state.remarkShows||{}), [key]: e.target.checked};
+    render(); saveSettings();
+  });
 });
 document.getElementById('showStops').addEventListener('change', e=>{
   state.showStops = e.target.checked;
@@ -854,10 +1706,11 @@ document.getElementById('stopsOrder').addEventListener('change', e=>{
   state.stopsOrder = e.target.value;
   setTicker(true); saveSettings();
 });
-['platform','platColor','rowCount','tickerZh','tickerEn','tickerCycles','tickerSpeed'].forEach(id=>{
+['platform','platSide','platColor','rowCount','tickerZh','tickerEn','tickerCycles','tickerSpeed'].forEach(id=>{
   const el = document.getElementById(id);
   const handler = e=>{
     state[id] = ['rowCount','tickerCycles','tickerSpeed'].includes(id) ? +e.target.value : e.target.value;
+    if (id === 'platSide') syncPlatformLabel();
     render(); setTicker(true); saveSettings();
   };
   el.addEventListener('input', handler);
@@ -868,15 +1721,25 @@ document.getElementById('stopsOrder').addEventListener('change', e=>{
 const SAVE_KEY  = 'pids.settings.v1';
 const KEY_STORE = 'pids.tdx.v1';          // 金鑰只放 sessionStorage，關閉瀏覽器即清除
 let saveTimer = null;
+/* 存檔前去掉「即時快照」欄位：它們每次同步都會重算，存下來反而會讓看板顯示過期狀態 */
+function stripTrainSnapshot(t){
+  const o = {...t};
+  delete o.trainPos; delete o.live; delete o.runningStatus; delete o.updateTime;
+  return o;
+}
 function saveSettings(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{
     try{
       const s = state;
       localStorage.setItem(SAVE_KEY, JSON.stringify({
-        platform:s.platform, platColor:s.platColor, rowCount:s.rowCount,
+        platform:s.platform, platColor:s.platColor, platSide:s.platSide, rowCount:s.rowCount,
         showPlatform:s.showPlatform, showStops:s.showStops, stopsOrder:s.stopsOrder,
+        remarkShows:s.remarkShows, remarkMode:s.remarkMode,
+        departGrace:s.departGrace, keepCancelled:s.keepCancelled,
         tickerZh:s.tickerZh, tickerEn:s.tickerEn, tickerCycles:s.tickerCycles, tickerSpeed:s.tickerSpeed,
+        /* 班次也存（去掉即時快照 trainPos／live），重新整理／斷電重開不會回到假資料 */
+        trains:s.trains.slice(0, MAX_TRAINS).map(stripTrainSnapshot),
         langMode, tickerMode,
         sync:{ mode:syncState.mode, stationId:syncState.stationId,
                interval:syncState.interval, matchPlatform:syncState.matchPlatform }
@@ -890,12 +1753,38 @@ function loadSettings(){
   try{
     const o = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     if (o && typeof o === 'object'){
-      const keys = ['platform','platColor','rowCount','showPlatform','showStops','stopsOrder',
+      const keys = ['platform','platColor','platSide','rowCount','showPlatform','showStops','stopsOrder',
+                    'remarkShows','remarkMode','departGrace','keepCancelled',
                     'tickerZh','tickerEn','tickerCycles','tickerSpeed'];
       for (const k of keys) if (o[k] !== undefined) state[k] = o[k];
       state.rowCount = +state.rowCount || 2;
       state.tickerCycles = +state.tickerCycles || 1;
       state.tickerSpeed = +state.tickerSpeed || 0.11;
+      state.departGrace = DEPART_GRACE_OPTIONS.includes(+state.departGrace) ? +state.departGrace : 2;
+      state.keepCancelled = state.keepCancelled === true;
+      if (state.remarkMode !== 'manual') state.remarkMode = 'auto';
+      /* 還原班次：補算缺少的 ts、清掉 30 分鐘前就該離站的舊班次 */
+      if (Array.isArray(o.trains)){
+        const cutoff = Date.now() - 30*60000;
+        state.trains = o.trains
+          .filter(t => t && t.time)
+          .map(t => {
+            const copy = {...t};
+            if (!Number.isFinite(copy.ts)){
+              const base = tsBase(copy);
+              if (Number.isFinite(base)) copy.ts = base;
+            }
+            return copy;
+          })
+          .filter(t => {
+            const ts = tsOf(t);
+            if (!Number.isFinite(ts)) return true;
+            // 停駛且勾選「整天保留」時，不受 30 分鐘清理影響
+            if (t.st === 'cancel' && state.keepCancelled) return true;
+            return ts > cutoff;
+          })
+          .slice(0, MAX_TRAINS);
+      }
       if (o.langMode)   langMode = o.langMode;
       if (o.tickerMode) tickerMode = o.tickerMode;
       if (o.sync){
@@ -918,6 +1807,39 @@ function syncLangPills(){
   tickLang = tickerMode==='auto' ? tickLang : tickerMode;
 }
 
+/* ====== 設定頁分頁：班次資料／顯示設定／跑馬燈／TDX 同步 ====== */
+const TAB_KEY = 'pids.tab.v1';
+const tabButtons = [...document.querySelectorAll('.tab')];
+const panes = { data:'pane-data', display:'pane-display', ticker:'pane-ticker', tdx:'pane-tdx' };
+let activeTab = 'data';
+function showTab(name, remember){
+  if (!panes[name]) name = 'data';
+  activeTab = name;
+  Object.entries(panes).forEach(([k,id])=>{
+    const el = document.getElementById(id);
+    if (el) el.hidden = k !== name;
+  });
+  tabButtons.forEach(b=>{
+    const on = b.dataset.pane === name;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true':'false');
+  });
+  if (remember){ try{ localStorage.setItem(TAB_KEY, name); }catch(e){} }
+  if (name === 'data') buildEditor(true);
+  if (name === 'ticker') updateTickerInfo();
+  rescale();
+}
+tabButtons.forEach(b=> b.addEventListener('click', ()=> showTab(b.dataset.pane, true)));
+let savedTab = 'data';
+try{ savedTab = localStorage.getItem(TAB_KEY) || 'data'; }catch(e){}
+showTab(savedTab, false);
+
+/* 班次數顯示在分頁上 */
+function updateTrainCount(){
+  const el = document.getElementById('trainCount');
+  if (el) el.textContent = state.trains.length;
+}
+
 /* ====== 主畫面／設定頁切換：共用同一份資料，不重載頁面 ====== */
 const mainView = document.getElementById('mainView');
 const settingsView = document.getElementById('settingsView');
@@ -929,6 +1851,8 @@ openSettings.addEventListener('click', ()=>{
   settingsView.hidden = false;
   openSettings.hidden = true;
   window.scrollTo(0,0);
+  render();            // 設定頁預覽先畫一次，才不會空白
+  rescale();
   backToMain.focus();
 });
 backToMain.addEventListener('click', ()=>{
@@ -970,6 +1894,9 @@ let syncState = {
   lastError: null,
   lastMessage: null,   // { text, cls }：由 updateSyncUI() 統一輸出，避免被覆蓋
   liveSource: null,    // 這次同步的即時資料來自哪個來源
+  trainLiveSource: null, // 列車動態（TrainLiveBoard）來源
+  boardCount: 0,         // 本站即時看板提供的班次數
+  posCount: 0,           // 列車動態的列車數
   dailySource: null,   // 這次同步的當日班表來自哪個來源
   isSyncing: false
 };
@@ -988,12 +1915,15 @@ const syncStatusBadge = document.getElementById('syncStatusBadge');
 const syncSourceEl = document.getElementById('syncSource');
 
 function updateSyncUI(){
-  syncStatusBadge.className = 'sync-badge';
-  if (syncState.mode === 'off'){ syncStatusBadge.textContent = '未啟用'; syncStatusBadge.classList.add('off'); }
-  else if (syncState.isSyncing){ syncStatusBadge.textContent = '同步中'; syncStatusBadge.classList.add('syncing'); }
-  else if (syncState.lastError){ syncStatusBadge.textContent = '錯誤'; syncStatusBadge.classList.add('error'); }
-  else if (!syncState.lastSync){ syncStatusBadge.textContent = '未同步'; syncStatusBadge.classList.add('off'); }
-  else { syncStatusBadge.textContent = '已同步'; syncStatusBadge.classList.add('ok'); }
+  // 頂欄與 TDX 分頁各有一顆徽章，內容永遠同步
+  const badges = [syncStatusBadge, document.getElementById('syncStatusBadge2')];
+  let cls = 'sync-badge', txt = '未啟用';
+  if (syncState.mode === 'off'){ txt='未啟用'; cls+=' off'; }
+  else if (syncState.isSyncing){ txt='同步中'; cls+=' syncing'; }
+  else if (syncState.lastError){ txt='錯誤'; cls+=' error'; }
+  else if (!syncState.lastSync){ txt='未同步'; cls+=' off'; }
+  else { txt='已同步'; cls+=' ok'; }
+  badges.forEach(b=>{ if(!b) return; b.className = cls; b.textContent = txt; });
   btnSyncNow.disabled = syncState.isSyncing || syncState.mode === 'off';
   if (syncState.lastSync){
     const d = syncState.lastSync;
@@ -1018,9 +1948,12 @@ function updateSyncUI(){
     syncMessageEl.className = 'sync-result';
   }
   if (syncSourceEl){
-    syncSourceEl.textContent = (syncState.liveSource || syncState.dailySource)
-      ? `資料來源：${[syncState.liveSource, syncState.dailySource].filter(Boolean).join(' ＋ ')}`
-      : '資料來源：--';
+    const bits = [
+      `班表：${syncState.dailySource || '—'}`,
+      `即時：${syncState.liveSource || '—'}${syncState.boardCount ? ` ${syncState.boardCount} 筆` : ''}`,
+      `列車動態：${syncState.trainLiveSource || '—'}${syncState.posCount ? ` ${syncState.posCount} 列` : ''}`
+    ];
+    syncSourceEl.textContent = `資料來源：${bits.join('　・　')}`;
   }
 }
 
@@ -1050,13 +1983,24 @@ function normalizeLiveBoards(data){
   return (data && (data.StationLiveBoards || data.LiveBoards)) || [];
 }
 
+/* 即時狀態來源（依 TDX Swagger「公共運輸-軌道 v3」的實際欄位挑選）：
+   · /v3/Rail/TRA/StationLiveBoard/Station/{StationID}
+       → DelayTime（延誤分鐘）＋ RunningStatus（0 準點／1 誤點／2 取消）＋ Platform
+         這是唯一提供「狀態列舉值」的端點，狀態就以此為準。
+   · /v3/Rail/TRA/TrainLiveBoard
+       → TrainStationStatus（0 進站中／1 在站上／2 已離站）＋ DelayTime
+         只用來決定「要不要亮小圓點」與「是否已離站」。
+   注意：v2 的 LiveBoard 沒有 RunningStatus，只有延誤分鐘，故不再列為首選。 */
 const LIVE_SOURCES = [
-  { name:'TDX v3', auth:true,  url:id => `${TDX_BASE_V3}/StationLiveBoard/Station/${id}` },
-  { name:'TDX v2', auth:true,  url:id => `${TDX_BASE}/LiveBoard/Station/${id}?$top=50&$format=JSON` },
-  { name:'PTX v3', auth:false, url:id => `${PTX_BASE_V3}/StationLiveBoard/Station/${id}` },
+  { name:'TDX v3 StationLiveBoard', auth:true,  url:id => `${TDX_BASE_V3}/StationLiveBoard/Station/${id}` },
+  { name:'PTX v3 StationLiveBoard', auth:false, url:id => `${PTX_BASE_V3}/StationLiveBoard/Station/${id}` },
+];
+const TRAIN_LIVE_SOURCES = [
+  { name:'TDX v3 TrainLiveBoard', auth:true,  url:() => `${TDX_BASE_V3}/TrainLiveBoard` },
+  { name:'PTX v3 TrainLiveBoard', auth:false, url:() => `${PTX_BASE_V3}/TrainLiveBoard` },
 ];
 
-/* 依序嘗試三個來源：有金鑰先走 TDX，沒金鑰直接走免 token 的 PTX。
+/* 依序嘗試來源：有金鑰先走 TDX，沒金鑰走免 token 的 PTX。
    任何一個回非空陣列就採用；全部失敗才丟錯，錯誤訊息會列出每個來源的原因。 */
 async function fetchStationLiveBoard(stationId){
   const errors = [];
@@ -1077,6 +2021,47 @@ async function fetchStationLiveBoard(stationId){
     }
   }
   throw new Error(`即時看板取得失敗（${errors.join('；')}）`);
+}
+
+/* 列車動態（TrainLiveBoard）：整批回傳目前正在線上的列車「所在車站」與狀態。
+   回傳 Map<TrainNo, {stationId, stationName, status, delay}>，用來判斷本月台是不是
+   「列車正進站中」（status 0）、「已離站」（status 2）等更精確的狀態。
+   這是選用來源：抓不到就回空 Map，不影響主要同步。 */
+async function fetchTrainLiveBoard(){
+  const hasKey = !!(syncState.clientId && syncState.clientSecret);
+  for (const src of TRAIN_LIVE_SOURCES){
+    if (src.auth && !hasKey) continue;
+    try{
+      const headers = { Accept:'application/json' };
+      if (src.auth) headers.Authorization = `Bearer ${await getValidToken()}`;
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(), 12000);
+      let res;
+      try{
+        res = await fetch(src.url(), { headers, signal: controller.signal });
+      }finally{ clearTimeout(timer); }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const rows = Array.isArray(data) ? data : (data?.TrainLiveBoards || []);
+      const map = new Map();
+      for (const r of rows){
+        const no = String(r.TrainNo || '').trim();
+        if (!no) continue;
+        map.set(no, {
+          stationId: String(r.StationID || ''),
+          stationName: r.StationName?.Zh_tw || '',
+          status: Number(r.TrainStationStatus ?? NaN),   // 0 進站中／1 在站上／2 已離站
+          delay: Number(r.DelayTime || 0),
+          updateTime: r.UpdateTime || ''
+        });
+      }
+      if (map.size) syncState.trainLiveSource = src.name;
+      return map;
+    }catch(err){
+      console.warn(`${src.name} 取得失敗：`, err.message);
+    }
+  }
+  return new Map();
 }
 
 function mapTDXTrainType(zh){
@@ -1199,11 +2184,36 @@ function taiwanTimeString(d=new Date(), seconds=false){
   const time = taiwanParts(d).time;
   return seconds ? time : time.slice(0,5);
 }
+/* 當日班表（v3 DailyStationTimetable）：每列都有 SuspendedFlag（列車於本站停駛）與
+   ServiceType（定期／加開／郵輪／專列），比 v2 DailyTimetable 更適合標示「停駛」。 */
+// v3 沒有「TrainDate + Station」的路徑，改用 $filter 篩本站（實測只回 78KB，不是全站 7MB）
+const dailyV3 = (base,id,date)=>`${base}/DailyStationTimetable/TrainDate/${date}?$filter=${encodeURIComponent(`StationID eq '${id}'`)}&$format=JSON`;
 const DAILY_SOURCES = [
+  { name:'TDX v3', auth:true,  url:(id,date)=>dailyV3(TDX_BASE_V3,id,date) },
+  { name:'PTX v3', auth:false, url:(id,date)=>dailyV3(PTX_BASE_V3,id,date) },
   { name:'TDX v2', auth:true,  url:(id,date)=>`${TDX_BASE}/DailyTimetable/Station/${id}/${date}?$format=JSON` },
   { name:'PTX v2', auth:false, url:(id,date)=>`${PTX_BASE_V2}/DailyTimetable/Station/${id}/${date}?$format=JSON` },
 ];
-/* 當日班表：有金鑰先走 TDX v2，沒金鑰（或 TDX 失敗）退回免 token 的 PTX v2。 */
+/* v3 DailyStationTimetable 回傳 { StationTimetables:[{Direction,TimeTables:[…]}] }，
+   同一個車站會拆成順行／逆行兩包（也可能更多），這裡攤平成單一列陣列，
+   並把 Direction 寫回每一列，方便後續判斷月台方向。 */
+function unpackDailyStation(data){
+  if (Array.isArray(data)) return data;
+  const groups = data?.StationTimetables;
+  if (Array.isArray(groups)){
+    const out = [];
+    for (const g of groups){
+      const dir = g.Direction;
+      for (const tt of (g.TimeTables || [])){
+        out.push({...tt, Direction: (tt.Direction ?? dir), StationID: g.StationID, StationName: g.StationName});
+      }
+    }
+    return out;
+  }
+  if (Array.isArray(data?.DailyTimetables)) return data.DailyTimetables;
+  return [];
+}
+/* 當日班表：有金鑰先走 TDX v3，退而求其次依序嘗試 PTX v3 / TDX v2 / PTX v2。 */
 async function fetchStationDailyTimetable(stationId, date, retryCount=0){
   const key=`${stationId}/${date}`;
   const cached=dailyStationCache.get(key);
@@ -1228,7 +2238,7 @@ async function fetchStationDailyTimetable(stationId, date, retryCount=0){
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data=await res.json();
-      const rows=Array.isArray(data)?data:(Array.isArray(data?.DailyTimetables)?data.DailyTimetables:[]);
+      const rows=unpackDailyStation(data);
       if (!rows.length) throw new Error('0 筆');
       dailyStationCache.set(key,{at:Date.now(),data:rows,src:src.name});
       syncState.dailySource=src.name;
@@ -1286,20 +2296,38 @@ function mapTDXDailyStationTrain(item, date){
     if (Number.isFinite(ts) && Number.isFinite(arrival.ts) && ts < arrival.ts) ts += 24*3600e3;
   }
 
-  const end   = info.EndingStationName   || {};
+  // v3 DailyStationTimetable 的終點站欄位叫 DestinationStationName（v2 巢狀格式是 EndingStationName）
+  const end   = info.EndingStationName || info.DestinationStationName || item.DestinationStationName || stop.DestinationStationName || {};
   const start = info.StartingStationName || {};
   const tripLine  = Number(info.TripLine ?? item.TripLine);
-  const suspended = Number(item.SuspendedFlag ?? stop.SuspendedFlag ?? 0);
-  const delay     = Number(item.DelayTime || 0);
+  const suspended = Number(item.SuspendedFlag ?? stop.SuspendedFlag ?? info.SuspendedFlag ?? 0);
+  const service   = Number(item.ServiceType ?? 1);   // 1 定期／2 加開／3 郵輪／4 專列
 
+  const typeRaw = (info.TrainTypeName && info.TrainTypeName.Zh_tw) || '';
   return {
     time: parsed.time, ts,
     dest: end.Zh_tw || '', destEn: end.En || '',
-    no: String(info.TrainNo || ''),
-    type: mapTDXTrainType(info.TrainTypeName && info.TrainTypeName.Zh_tw),
+    no: String(info.TrainNo || item.TrainNo || ''),
+    type: mapTDXTrainType(typeRaw),
+    typeRaw,
+    typeId: String(info.TrainTypeID || item.TrainTypeID || ''),
+    note: String(info.Note || item.Note || ''),
+    tripLine: Number(info.TripLine ?? item.TripLine ?? 0),
+    flags: {
+      wheelchair: Number(info.WheelChairFlag ?? 0) === 1,
+      bike: Number(info.BikeFlag ?? 0) === 1,
+      dining: Number(info.DiningFlag ?? 0) === 1,
+      breastfeed: Number(info.BreastFeedFlag ?? info.BreastFeedingFlag ?? 0) === 1,
+      package: Number(info.PackageServiceFlag ?? 0) === 1,
+      extra: Number(info.ExtraTrainFlag ?? 0) === 1
+    },
     platform: '', direction: info.Direction ?? item.Direction,
-    st: suspended === 1 ? 'cancel' : 'schedule',   // 當日班表就能標停駛
-    min: delay,
+    // 班表本身就能判斷「停駛」；其餘先視為準點（臺鐵 PIDS 抓不到誤點時也是顯示準點）。
+    // 若班表連發車時刻都沒有，就標「未知」。
+    st: suspended === 1 ? 'cancel' : (parsed.time ? 'ontime' : 'unknown'),
+    live: false,
+    service,
+    min: 0,
     rm: tripLine === 1 ? '山' : (tripLine === 2 ? '海' : ''),
     stops: '', stopsEn: '', start: start.Zh_tw || ''
   };
@@ -1315,16 +2343,24 @@ function mapTDXToTrain(item){
   const nowMs = Date.now();
   const parsed = parseTDXTime(raw, taiwanDateString());
   let ts = String(raw).includes('T') ? parsed.ts : fixMidnight(parsed.ts, nowMs);
-  const delay = Number(item.DelayTime || 0);          // 誤點分鐘數（v2/v3 同欄位）
-  if (Number.isFinite(ts)) ts += delay * 60000;       // 誤點 → 實際到站時間往後推
+  const delayRaw = item.DelayTime;
+  const delay    = Number(delayRaw || 0);             // 誤點分鐘數（v2/v3 同欄位）
+  const delayKnown = delayRaw !== undefined && delayRaw !== null && delayRaw !== '' && Number.isFinite(Number(delayRaw));
+  // ts 一律存「表定時刻」；誤點由 tsOf() 另外加，避免同步／手動兩條路徑重複計算
 
-  // 停駛：SuspendedFlag（0 正常／1 停駛／2 部分停駛）；v3 另有 RunningStatus（0 未發車／1 行駛中／2 已離站）
-  const suspended = Number(item.SuspendedFlag || 0);
-  const running = item.RunningStatus;
-  let st = 'ontime';
-  if (suspended === 1)      st = 'cancel';
-  else if (delay > 0)       st = 'delay';
-  else if (running === 2)   st = 'schedule';          // 已離站就不宣稱「準點」
+  /* 狀態判斷（依 TDX Swagger v3 StationLiveBoard 的列舉值）：
+       RunningStatus 2 → 停駛　（Swagger：0 準點／1 誤點／2 取消）
+       RunningStatus 1 或 DelayTime > 0 → 晚 N 分
+       其餘 → 準點（臺鐵 PIDS 抓不到誤點時同樣退回準點）
+     列車是否進站中／停靠中／已離站，改由 TrainLiveBoard 的 TrainStationStatus 驅動圓點動畫。 */
+  const suspended = Number(item.SuspendedFlag || 0);      // v2 相容欄位（1 停駛）
+  const running   = Number(item.RunningStatus ?? NaN);
+  const hasTime   = !!(raw && String(raw).trim());        // 連表定時刻都沒有 → 無法判斷
+  let st;
+  if (suspended === 1 || running === 2)      st = 'cancel';
+  else if (delay > 0 || running === 1)       st = 'delay';
+  else if (!Number.isFinite(running) && !delayKnown) st = 'unknown';   // 連誤點欄位都沒有 → 未知
+  else                                       st = 'ontime';
 
   const destName = item.EndingStationName || item.DestinationStationName || {};
   return {
@@ -1332,12 +2368,58 @@ function mapTDXToTrain(item){
     dest: destName.Zh_tw || '', destEn: destName.En || '',
     no: String(item.TrainNo || ''),
     type: mapTDXTrainType(item.TrainTypeName && item.TrainTypeName.Zh_tw),
-    platform: item.Platform || '', direction: item.Direction,   // W-05：月台／方向
+    platform: String(item.Platform || ''), direction: item.Direction,   // W-05：月台／方向
+    typeRaw: (item.TrainTypeName && item.TrainTypeName.Zh_tw) || '',
+    typeId: String(item.TrainTypeID || ''),
+    tripLine: Number(item.TripLine ?? 0),
     st, min: delay,
+    live: true,                     // 這一筆是真的即時資料（狀態可信）
+    runningStatus: Number.isFinite(running) ? running : null,
+    updateTime: item.UpdateTime || '',
     // W-10：TripLine 0 不經山／海線、1 山線、2 海線、3 成追線
     rm: item.TripLine === 1 ? '山' : (item.TripLine === 2 ? '海' : ''),
     stops: '', stopsEn: ''
   };
+}
+
+/* 只有列車動畫時（沒有本站看板）的補充：
+   TrainLiveBoard 只告訴我們「列車在哪一站、要不要進站」，那是燈號（動態）而不是狀態文字，
+   所以這裡只把位置記進 trainPos，狀態文字保持 準點／晚點／停駛／未知 四種。
+   若列車已在本站離站（TrainStationStatus=2），直接標成已離站 → 由看板移除、換下一班。 */
+function statusFromTrainLive(pos, fallback){
+  const atHere = String(pos.stationId) === String(syncState.stationId);
+  if (atHere && pos.status === 2) return 'departed';
+  return fallback;
+}
+
+/* 人工資料優先保護：同步只更新「機器可推得的欄位」，
+   人工班次（manual）與人工改過的欄位（t.human）一律保留。 */
+const HUMAN_FIELDS = ['dest','destEn','type','stops','stopsEn','remark','remarkEn','cars'];
+function mergeHumanTrains(fresh, prev){
+  const list = Array.isArray(prev) ? prev : [];
+  const keyOf = t => `${String(t.no||'').trim()}|${String(t.time||'').trim()}`;
+  const prevByKey = new Map(list.map(p => [keyOf(p), p]));
+  const prevByNo  = new Map(list.filter(p => p.no).map(p => [String(p.no).trim(), p]));
+  const used = new Set();
+  const out = (fresh || []).map(t => {
+    const p = prevByKey.get(keyOf(t)) || prevByNo.get(String(t.no||'').trim());
+    if (!p) return t;
+    used.add(p);
+    const merged = {...t};
+    for (const f of HUMAN_FIELDS){
+      if (p.human && p.human[f] && p[f] !== undefined) merged[f] = p[f];
+    }
+    if (p.manual) merged.manual = true;
+    if (p.human) merged.human = p.human;
+    return merged;
+  });
+  // 人工班次：TDX 查不到也要留在看板上（除非已經離站）
+  for (const p of list){
+    if (!p.manual || used.has(p)) continue;
+    if (isDeparted(p, Date.now())) continue;
+    out.push(p);
+  }
+  return out;
 }
 
 async function performSync(){
@@ -1346,6 +2428,7 @@ async function performSync(){
   syncState.lastError = null;
   syncState.lastMessage = null;
   syncState.liveSource = null;
+  syncState.trainLiveSource = null;
   syncState.dailySource = null;
   updateSyncUI();
 
@@ -1353,11 +2436,13 @@ async function performSync(){
     const stationId = syncState.stationId;
     const date = taiwanDateString();
 
-    // 兩個來源並行抓取；任何一個失敗都不會讓整個同步中斷（有班表就先用班表）。
-    const [liveResult, dailyResult] = await Promise.allSettled([
+    // 三個來源並行抓取；任何一個失敗都不會讓整個同步中斷（有班表就先用班表）。
+    const [liveResult, dailyResult, trainLiveResult] = await Promise.allSettled([
       fetchStationLiveBoard(stationId),
-      fetchStationDailyTimetable(stationId, date)
+      fetchStationDailyTimetable(stationId, date),
+      fetchTrainLiveBoard()
     ]);
+    const trainLive = trainLiveResult.status === 'fulfilled' ? trainLiveResult.value : new Map();
     const liveRaw   = liveResult.status === 'fulfilled' ? liveResult.value : [];
     const liveError = liveResult.status === 'rejected'  ? liveResult.reason : null;
     const dailyRows = dailyResult.status === 'fulfilled' ? dailyResult.value : [];
@@ -1369,7 +2454,7 @@ async function performSync(){
     const nowMs = Date.now();
     const liveMapped = liveRaw
       .map(mapTDXToTrain)
-      .filter(t => t.time && Number.isFinite(t.ts) && t.ts >= nowMs - 60000);
+      .filter(t => t.time && Number.isFinite(t.ts) && !isDeparted(t, nowMs));
 
     const byNo = new Map();
     for (const item of dailyRows){
@@ -1377,17 +2462,41 @@ async function performSync(){
       if (t.no && Number.isFinite(t.ts)) byNo.set(t.no, t);
     }
     const liveByNo = new Map(liveMapped.map(t => [String(t.no), t]));
-    // 完整班表為底；有即時資料的車次則覆蓋時間、月台、延誤與狀態。
+    /* 完整班表為底，再用即時資料覆蓋成更精確的狀態：
+       · 本站即時看板（StationLiveBoard）勝出 → 時間、月台、延誤、RunningStatus 都是本站的實況
+       · 只有列車動態（TrainLiveBoard）時 → 用 TrainStationStatus 補「進站中／已離站」，
+         延誤分鐘也一併帶入（這是全線資料，比本站看板早一步反映） */
     let trains = [...byNo.values()].map(scheduled => {
       const live = liveByNo.get(String(scheduled.no));
-      return live ? {...scheduled, ...live, stops:'', stopsEn:''} : scheduled;
+      if (live){
+        const merged = {...scheduled, ...live, stops:'', stopsEn:''};
+        // 本站看板沒說列車在哪一站；用列車動態補「已離站」，其餘（進站中／停靠中）留給圓點動畫
+        const pos = trainLive.get(String(live.no));
+        if (pos){
+          merged.trainPos = pos;
+          if (merged.st !== 'cancel' && String(pos.stationId) === String(syncState.stationId) && pos.status === 2){
+            merged.st = 'departed';
+          }
+        }
+        return merged;
+      }
+      const pos = trainLive.get(String(scheduled.no));
+      if (!pos) return scheduled;
+      const st = statusFromTrainLive(pos, scheduled.st);
+      return {...scheduled,
+        st: st || scheduled.st,
+        min: pos.delay || scheduled.min || 0,
+        live: st ? true : scheduled.live,
+        trainPos: pos};
     });
     // 保留即時看板有、但當日班表未列出的臨時／特殊車次。
     for (const live of liveMapped){
       if (!byNo.has(String(live.no))) trains.push({...live, stops:'', stopsEn:''});
     }
-    trains = trains.filter(t => Number.isFinite(t.ts) && t.ts >= nowMs - 60000)
-                   .sort((a, b) => a.ts - b.ts);
+    // 先合併「人工資料」：人工班次（sync 查無）保留，人工改過的欄位不被 TDX 覆寫
+    trains = mergeHumanTrains(trains, state.trains);
+    trains = trains.filter(t => Number.isFinite(tsOf(t)) && !isDeparted(t, nowMs))
+                   .sort((a, b) => tsOf(a) - tsOf(b));
     // 修好解析後這裡會是「當日全部剩餘班次」（實測約 200 筆）；
     // 看板只顯示 2–4 列，一次塞 200 列會讓 render/編輯器重建超過 1 秒，也讓停靠站 API 爆量。
     const totalBeforeTrim = trains.length;
@@ -1414,10 +2523,17 @@ async function performSync(){
     state.trains = trains;
     syncState.lastSync = now;
     const n = trains.length;
-    const liveCount = trains.filter(t => t.st !== 'schedule').length;
-    const sourceNote = dailyError
-      ? `即時看板 ${liveCount} 筆${liveError ? '（即時看板請求異常）' : ''}`
-      : `當日班表${liveCount ? `＋即時看板 ${liveCount} 筆` : ''}`;
+    syncState.boardCount = liveRaw.length;
+    syncState.posCount  = trainLive.size;
+    const liveCount = trains.filter(t => t.live).length;   // 真正有即時資料的筆數
+    const boardCount = trains.filter(t => t.runningStatus !== undefined && t.runningStatus !== null).length;
+    const posCount = trainLive.size;
+    const stateBits = [
+      `即時狀態 ${liveCount}/${n} 筆`,
+      boardCount ? `本站看板 ${boardCount} 筆（RunningStatus）` : (liveError ? '本站看板異常' : '本站看板尚無班次'),
+      posCount ? `列車動態 ${posCount} 列（TrainLiveBoard）` : '列車動態未取得'
+    ].join('・');
+    const sourceNote = `${syncState.dailySource ? syncState.dailySource + ' 班表' : '班表'}＋${stateBits}`;
     const trimNote = totalBeforeTrim > n ? `（顯示前 ${n} 筆，共 ${totalBeforeTrim} 筆）` : '';
 
     if (n){
@@ -1560,13 +2676,14 @@ btnTestToken.addEventListener('click', async ()=>{
 
 loadSettings();
 syncLangPills();
+showTab(activeTab, false);   // 讀到設定後再套一次（分頁與預覽都要最新狀態）
 buildEditor();
 loadSyncStateIntoUI();
 startSyncTimer();
 if (syncState.mode === 'auto') performSync();   // 重開機／重新整理後自動接回即時同步
 rotateUI();          // 只處理上方到站資訊
 setTicker(false);    // 跑馬燈自己管理語言與捲動
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ fitAll(); setTicker(true, true); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ render(); setTicker(true, true); });
 </script>
 </body>
 </html>
