@@ -724,7 +724,7 @@
       </div>
       <label class="toggle"><input type="checkbox" id="syncMatchPlatform" checked><span class="t">
         只顯示與顯示器「月台編號」相同的班次
-        <small>v3 的 Platform 常為空字串或 00（尚未確定），勾選時若全部落空會自動退回全站班表。</small>
+        <small>v3 的 Platform 常為空字串或 00（尚未確定）；這類「未定月台」的班次視為未知、一律保留顯示，只過濾掉確定在其他月台的班次。若全部都是未知或沒有符合的，會自動退回全站班表。</small>
       </span></label>
       <div class="acts">
         <button class="btn primary" id="btnSyncNow" type="button">立即同步</button>
@@ -738,7 +738,7 @@
     </div>
 
     <div class="card">
-      <h2>TDX 金鑰 <span class="sub">選填，未填時自動使用免金鑰備援</span></h2>
+      <h2>TDX 金鑰 <span class="sub">正式部署請務必填寫；未填時只能退回已落日的 PTX 備援</span></h2>
       <div class="row2">
         <div class="f"><label for="tdxClientId">Client ID</label>
           <input type="text" id="tdxClientId" placeholder="請輸入 TDX Client ID" autocomplete="off">
@@ -748,14 +748,21 @@
         </div>
       </div>
       <p class="hint">金鑰只存在瀏覽器 sessionStorage，關閉瀏覽器即清除；看板設定另存 localStorage。</p>
+      <label class="toggle"><input type="checkbox" id="syncAllowPtx" checked><span class="t">
+        TDX 失敗或未填金鑰時，允許退回 PTX 備援
+        <small>PTX（ptx.transportdata.tw）是已宣告落日的舊平台，只適合除錯或臨時備援，可能隨時失效；正式部署請填寫金鑰並關閉此選項。退回 PTX 時，「資料來源」列會標示警語。</small>
+      </span></label>
       <details class="more">
         <summary>資料來源與端點</summary>
         <p class="hint">
-          · 即時狀態：<code>/api/basic/v3/Rail/TRA/StationLiveBoard/Station/{StationID}</code>（DelayTime、RunningStatus、Platform）<br>
-          · 列車動態：<code>/api/basic/v3/Rail/TRA/TrainLiveBoard</code>（TrainStationStatus，判斷進站中／已離站）<br>
-          · 當日班表：<code>/api/basic/v3/Rail/TRA/DailyStationTimetable/TrainDate/{date}?$filter=StationID eq '{id}'</code>（SuspendedFlag、ServiceType）<br>
-          · 停靠站：<code>/api/basic/v3/Rail/TRA/GeneralTrainTimetable/TrainNo/{TrainNo}</code><br>
-          有金鑰時走 TDX，未填金鑰時自動退回免 token 的 PTX（ptx.transportdata.tw）同路徑端點。自動模式依設定間隔更新；手動模式僅於點擊「立即同步」時更新。
+          · 即時狀態：<code>/api/basic/v3/Rail/TRA/StationLiveBoard/Station/{StationID}</code>（DelayTime、RunningStatus、Platform；<code>00</code>／空白＝月台未定）<br>
+          · 列車動態：<code>/api/basic/v3/Rail/TRA/TrainLiveBoard/TrainNo/{TrainNo}</code>（TrainStationStatus，判斷進站中／已離站；只查看板會用到的前幾班，不再整批抓全線）<br>
+          · 當日班表：<code>/api/basic/v3/Rail/TRA/DailyStationTimetable/Today/Station/{StationID}</code>（SuspendedFlag、ServiceType；備援 <code>TrainDate/{date}?$filter=StationID eq '{id}'</code>）<br>
+          · 停靠站與車次資訊：依序 <code>DailyTrainTimetable/Today/TrainNo/{TrainNo}</code>（今日實際，含每站停駛旗標）→ <code>GeneralTrainTimetable/TrainNo/{TrainNo}</code> → <code>SpecificTrainTimetable/TrainNo/{TrainNo}</code>；同時從 <code>TrainInfo</code> 取身障／自行車／便當／哺乳室旗標、備註、山海線（TripLine）與起站<br>
+          · 車站清單：<code>/api/basic/v3/Rail/TRA/Station</code>（快取 24 小時；失敗時退回內建 13 站）<br>
+          有金鑰時走 TDX（Token 過期會自動重取並重試一次，仍失敗才降級）；未填金鑰或 TDX 失敗時，若未關閉上方選項，會退回免 token 的 PTX 同路徑端點。
+          PTX 為已宣告落日的舊平台；TDX 的免金鑰訪客模式則限瀏覽器使用、每日每 IP 僅少量次數（約 20 次，依 TDX Swagger 說明），都不適合看板長時間運作。
+          班表快取 1 小時、車站清單快取 24 小時；停靠站與車次資訊每天重新取得。自動模式依設定間隔更新；手動模式僅於點擊「立即同步」時更新。
         </p>
       </details>
     </div>
@@ -768,6 +775,8 @@
 const TYPES = {
   '區間':     {en:'Local Train',   c:'plain'},
   '區間快':   {en:'Fast Local',    c:'plain'},
+  '普快':     {en:'Ordinary Train', c:'plain'},   /* W-09：TrainTypeCode 7 */
+  '復興號':   {en:'Fu-Hsing',      c:'plain'},   /* W-09：TrainTypeCode 5 */
   '自強號':   {en:'T.C. EXP',      c:'orange'},
   '莒光號':   {en:'Chu-Kuang',     c:'orange'},
   '自強3000': {en:'T.C.3000',      c:'purple'},   /* 窄欄位用簡寫，原本 T.C.3000 EXP 放不下 */
@@ -1332,7 +1341,14 @@ function tickerContent(l){
     if (t){
       const zhStops = parseStops(t.stops);
       const enStops = parseStops(t.stopsEn);
-      const stops = l==='zh' ? zhStops : (enStops.length ? enStops : zhStops.map(n=>STATIONS[n] || n));
+      let stops = l==='zh' ? zhStops : (enStops.length ? enStops : zhStops.map(n=>STATIONS[n] || n));
+      /* W-04：DailyTrainTimetable 的 StopTimes 帶每站 SuspendedFlag。停駛站保留在停靠站字串裡（其他功能如
+         「經由」推導要用站名比對），只在跑馬燈顯示時加註；中英文清單長度不同（人工改過）時，英文不加註以免對錯站。 */
+      const susp = new Set(Array.isArray(t.suspendedStops) ? t.suspendedStops : []);
+      if (susp.size){
+        if (l==='zh') stops = stops.map((n,i)=> susp.has(zhStops[i]) ? `${n}（停駛）` : n);
+        else if (stops.length === zhStops.length) stops = stops.map((n,i)=> susp.has(zhStops[i]) ? `${n} (suspended)` : n);
+      }
       if (stops.length){
         if (l==='zh'){
           parts.push(`第 ${t.no} 次${t.type}（${t.time} 開往${t.dest}）停靠站：${stops.join('、')}`);
@@ -1640,6 +1656,7 @@ function updateTrainFromEditor(e){
     render(); saveSettings(); return;
   }
   t[k] = k==='min' ? Math.max(0, parseInt(e.target.value||'0',10)||0) : v;
+  if (k === 'stops') t.suspendedStops = [];     // 人工改了停靠站 → 原本 API 帶來的「停駛站」標記不再適用
   // 人工改過的欄位留旗標 → 自動同步時不會被 TDX 覆寫
   if (['dest','destEn','type','stops','stopsEn','rm','no'].includes(k)) t.human = {...(t.human||{}), [k]:true};
   if (k==='min' && t.min>0 && t.st==='ontime'){ t.st='delay'; tr.querySelector('[data-k=st]').value='delay'; }
@@ -1741,8 +1758,8 @@ function saveSettings(){
         /* 班次也存（去掉即時快照 trainPos／live），重新整理／斷電重開不會回到假資料 */
         trains:s.trains.slice(0, MAX_TRAINS).map(stripTrainSnapshot),
         langMode, tickerMode,
-        sync:{ mode:syncState.mode, stationId:syncState.stationId,
-               interval:syncState.interval, matchPlatform:syncState.matchPlatform }
+        sync:{ mode:syncState.mode, stationId:syncState.stationId, stationName:syncState.stationName,
+               interval:syncState.interval, matchPlatform:syncState.matchPlatform, allowPtx:syncState.allowPtx }
       }));
       sessionStorage.setItem(KEY_STORE, JSON.stringify({
         id:syncState.clientId, secret:syncState.clientSecret }));
@@ -1790,9 +1807,11 @@ function loadSettings(){
       if (o.sync){
         syncState.mode = o.sync.mode ?? 'off';
         syncState.stationId = o.sync.stationId ?? syncState.stationId;
-        syncState.stationName = TDX_STATIONS[syncState.stationId] || syncState.stationName;
+        // 已存的站可能不在內建 13 站內 → 站名也一併存檔，清單還沒載入時才不會誤顯示成「高雄」
+        syncState.stationName = TDX_STATIONS[syncState.stationId] || o.sync.stationName || syncState.stationName;
         syncState.interval = +o.sync.interval || 60;
         syncState.matchPlatform = o.sync.matchPlatform !== false;
+        syncState.allowPtx = o.sync.allowPtx !== false;
       }
     }
     const k = JSON.parse(sessionStorage.getItem(KEY_STORE) || '{}');
@@ -1876,11 +1895,28 @@ const MAX_TRAINS  = 30;   // 看板只顯示 2–4 列；一次抓全部剩餘�
 let tdxToken = null;
 let tdxTokenExpiry = 0;
 let syncTimer = null;
-// W-01：TDX／臺鐵 4 碼車站代碼對照（完整清單可打 GET /v2/Rail/TRA/Station 取得）
-const TDX_STATIONS = {
-  '0900':'基隆','1000':'臺北','1080':'桃園','1210':'新竹','3300':'臺中','4080':'嘉義',
-  '4220':'臺南','4340':'新左營','4350':'左營','4400':'高雄','5000':'屏東','6000':'臺東','7000':'花蓮'
-};
+/* W-01：車站清單。
+   內建 13 站只當「備援」；平常由 GET /v3/Rail/TRA/Station 動態載入（官方 245 站），
+   結果快取 24 小時（localStorage），期間不再打 API；同步模式為「關閉」時不會發出任何請求。
+   TDX_STATIONS（StationID → 中文站名）保持原本的物件形狀，由 setStationMaps() 維護，
+   loadSettings／換站事件等既有程式碼不必改。 */
+const TDX_STATIONS_FALLBACK = [
+  ['4400','高雄','Kaohsiung'],   ['1000','臺北','Taipei'],     ['3300','臺中','Taichung'],
+  ['1080','桃園','Taoyuan'],     ['1210','新竹','Hsinchu'],    ['4220','臺南','Tainan'],
+  ['4080','嘉義','Chiayi'],      ['4340','新左營','Xinzuoying'], ['4350','左營','Zuoying'],
+  ['0900','基隆','Keelung'],     ['7000','花蓮','Hualien'],    ['6000','臺東','Taitung'],
+  ['5000','屏東','Pingtung']
+].map(([id, zh, en]) => ({ id, zh, en }));
+const TDX_STATIONS = {};        // StationID → 中文站名（目前使用中的清單）
+const TDX_STATIONS_EN = {};     // StationID → 英文站名
+let stationList = [];           // 目前使用中的清單：[{id, zh, en}]
+function setStationMaps(list){
+  for (const k of Object.keys(TDX_STATIONS)) delete TDX_STATIONS[k];
+  for (const k of Object.keys(TDX_STATIONS_EN)) delete TDX_STATIONS_EN[k];
+  for (const s of list){ TDX_STATIONS[s.id] = s.zh; TDX_STATIONS_EN[s.id] = s.en; }
+  stationList = list;
+}
+setStationMaps(TDX_STATIONS_FALLBACK);
 
 let syncState = {
   mode: 'off',        // off | manual | auto
@@ -1888,6 +1924,7 @@ let syncState = {
   stationName: '高雄',
   interval: 60,
   matchPlatform: true,   // W-05：只顯示與顯示器月台相同的班次
+  allowPtx: true,        // W-10：TDX 失敗／未填金鑰時，是否允許退回 PTX 備援（已宣告落日的舊平台）
   clientId: '',
   clientSecret: '',
   lastSync: null,
@@ -1896,7 +1933,9 @@ let syncState = {
   liveSource: null,    // 這次同步的即時資料來自哪個來源
   trainLiveSource: null, // 列車動態（TrainLiveBoard）來源
   boardCount: 0,         // 本站即時看板提供的班次數
-  posCount: 0,           // 列車動態的列車數
+  posCount: 0,           // 列車動態「有資料」的列車數
+  posQueried: 0,         // 本輪實際查詢列車動態的班次數（W-06：只查看板會用到的前幾班）
+  stopsSource: null,     // 本輪停靠站／車次資訊實際來自哪個端點（DailyTrain Today／General／Specific）
   dailySource: null,   // 這次同步的當日班表來自哪個來源
   isSyncing: false
 };
@@ -1907,6 +1946,7 @@ const syncIntervalEl = document.getElementById('syncInterval');
 const tdxClientIdEl = document.getElementById('tdxClientId');
 const tdxClientSecretEl = document.getElementById('tdxClientSecret');
 const syncMatchEl = document.getElementById('syncMatchPlatform');   // W-05
+const syncAllowPtxEl = document.getElementById('syncAllowPtx');     // W-10
 const btnSyncNow = document.getElementById('btnSyncNow');
 const btnTestToken = document.getElementById('btnTestToken');
 const syncLastTimeEl = document.getElementById('syncLastTime');
@@ -1914,6 +1954,11 @@ const syncMessageEl = document.getElementById('syncMessage');
 const syncStatusBadge = document.getElementById('syncStatusBadge');
 const syncSourceEl = document.getElementById('syncSource');
 
+/* 本輪同步有沒有任何資料來自 PTX（含車站清單） */
+function usedPtxSource(){
+  return [syncState.dailySource, syncState.liveSource, syncState.trainLiveSource, syncState.stopsSource, stationListState.src]
+    .some(isPtxSource);
+}
 function updateSyncUI(){
   // 頂欄與 TDX 分頁各有一顆徽章，內容永遠同步
   const badges = [syncStatusBadge, document.getElementById('syncStatusBadge2')];
@@ -1938,8 +1983,16 @@ function updateSyncUI(){
     syncMessageEl.textContent = '正在從 TDX 抓取即時班次與當日班表...';
     syncMessageEl.className = 'sync-result warn';
   } else if (syncState.lastMessage){
-    syncMessageEl.textContent = syncState.lastMessage.text;
-    syncMessageEl.className = `sync-result ${syncState.lastMessage.cls || ''}`;
+    // W-01：車站清單載入失敗而退回內建 13 站時，在同步訊息後面補一句（動態判斷，載入結果晚到也會更新）
+    const stationNote = (stationListState.isFallback && stationListState.failedAt) ? '・車站清單使用內建備援' : '';
+    // W-10：資料來自 PTX 時不能無聲——有金鑰卻用到 PTX＝TDX 失敗被降級，狀態提升為警告
+    const hasKey = !!(syncState.clientId && syncState.clientSecret);
+    const ptxNote = !usedPtxSource() ? '' : (hasKey ? '・⚠ TDX 失敗，已降級使用 PTX 備援（舊平台、可能隨時失效）'
+                                                  : '・使用 PTX 備援（未填 TDX 金鑰；PTX 為已落日舊平台）');
+    let msgCls = syncState.lastMessage.cls || '';
+    if (ptxNote && hasKey && msgCls === 'ok') msgCls = 'warn';
+    syncMessageEl.textContent = syncState.lastMessage.text + stationNote + ptxNote;
+    syncMessageEl.className = `sync-result ${msgCls}`;
   } else if (syncState.lastError){
     syncMessageEl.textContent = `同步失敗：${syncState.lastError}`;
     syncMessageEl.className = 'sync-result error';
@@ -1949,11 +2002,13 @@ function updateSyncUI(){
   }
   if (syncSourceEl){
     const bits = [
+      `車站清單：${stationListState.src}（${stationListState.count} 站）`,
       `班表：${syncState.dailySource || '—'}`,
       `即時：${syncState.liveSource || '—'}${syncState.boardCount ? ` ${syncState.boardCount} 筆` : ''}`,
-      `列車動態：${syncState.trainLiveSource || '—'}${syncState.posCount ? ` ${syncState.posCount} 列` : ''}`
+      `列車動態：${syncState.trainLiveSource || '—'}${syncState.posQueried ? ` ${syncState.posCount}/${syncState.posQueried} 列` : ''}`,
+      `停靠站：${syncState.stopsSource || '—'}`
     ];
-    syncSourceEl.textContent = `資料來源：${bits.join('　・　')}`;
+    syncSourceEl.textContent = `資料來源：${bits.join('　・　')}${usedPtxSource() ? '　⚠ 含 PTX 備援' : ''}`;
   }
 }
 
@@ -1977,6 +2032,166 @@ async function getValidToken(){
   return tdxToken;
 }
 
+/* 共用 fetch：依來源帶 token、逾時中止、401 時清掉 token 重取再試一次（W-08 的統一做法）。
+   回傳 Response，由呼叫端檢查 ok／404；重試後仍 401 則丟出「認證失敗」，讓呼叫端降級到下一個來源。 */
+async function tdxFetch(src, url, { timeoutMs = 12000 } = {}){
+  for (let attempt = 0; attempt < 2; attempt++){
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try{
+      const headers = { Accept:'application/json' };
+      if (src.auth) headers.Authorization = `Bearer ${await getValidToken()}`;
+      const res = await fetch(url, { headers, signal: controller.signal });
+      if (res.status === 401 && src.auth){
+        tdxToken = null;                           // Token 過期或被撤銷 → 下一圈重新取得
+        if (attempt === 0) continue;
+        throw new Error('認證失敗（401）');
+      }
+      return res;
+    }catch(err){
+      if (err && err.name === 'AbortError') throw new Error('逾時');
+      throw err;
+    }finally{ clearTimeout(timer); }
+  }
+  throw new Error('認證失敗（401）');
+}
+
+/* W-10：這個來源現在能不能用？可用回傳空字串，否則回傳原因（寫進錯誤訊息）。
+   · TDX 來源要有金鑰
+   · PTX 是已宣告落日的舊平台，使用者可在「TDX 金鑰」區塊關閉（syncState.allowPtx） */
+function sourceSkipReason(src){
+  if (src.auth) return (syncState.clientId && syncState.clientSecret) ? '' : '未填金鑰';
+  return syncState.allowPtx === false ? 'PTX 備援已關閉' : '';
+}
+/* 沒有金鑰時，在錯誤訊息後面明確告訴使用者怎麼解（W-10） */
+function noKeyHint(){
+  return (syncState.clientId && syncState.clientSecret) ? ''
+    : '。未填 TDX 金鑰：請在「TDX 金鑰」欄位填寫 Client ID／Secret 後再同步';
+}
+const isPtxSource = name => /^PTX/.test(String(name || ''));
+
+/* ====== W-01：車站清單（GET /v3/Rail/TRA/Station） ====== */
+const STATION_CACHE_KEY = 'pids.stations.v1';
+const STATION_CACHE_TTL = 24*3600e3;      // 車站屬靜態資料：每天最多更新一次
+const STATION_RETRY_MS  = 10*60e3;        // 載入失敗後，至少隔這麼久才再試（避免每輪同步都重打）
+const STATION_SOURCES = [
+  { name:'TDX v3 Station', auth:true,  url:() => `${TDX_BASE_V3}/Station?$format=JSON` },
+  { name:'PTX v3 Station', auth:false, url:() => `${PTX_BASE_V3}/Station?$format=JSON` },
+];
+const stationListState = {
+  src:'內建備援', count:TDX_STATIONS_FALLBACK.length,
+  isFallback:true,      // true＝目前用的是內建 13 站
+  failedAt:0,           // 最近一次載入失敗的時間（0＝沒失敗過）
+  lastError:'', loading:null
+};
+/* v3 回傳 { Stations:[…] }；舊平台可能直接回陣列。只取 StationID／中文／英文站名，依 StationID 排序。 */
+function normalizeStationRows(data){
+  const rows = Array.isArray(data) ? data : ((data && (data.Stations || data.StationList)) || []);
+  const seen = new Set(), out = [];
+  for (const r of rows){
+    const id = String(r && r.StationID != null ? r.StationID : '').trim();
+    const nm = (r && r.StationName) || {};
+    const zh = String(nm.Zh_tw || '').trim();
+    if (!id || !zh || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, zh, en: String(nm.En || '').trim() });
+  }
+  return out.sort((a, b) => a.id < b.id ? -1 : (a.id > b.id ? 1 : 0));
+}
+const stationOptionLabel = s => `${s.zh}${s.en ? ` (${s.en})` : ''}・${s.id}`;
+/* 用目前清單重建 #syncStation 的選項（格式：中文 (English)・ID），並保留目前選定的站 */
+function rebuildStationOptions(){
+  if (typeof syncStationEl === 'undefined' || !syncStationEl) return;
+  const cur = String(syncState.stationId);
+  // 已存的站不在清單內（例如存了七堵、卻只載到內建 13 站）→ 補一個選項，避免下拉變成空白
+  const list = stationList.some(s => s.id === cur)
+    ? stationList
+    : [{ id:cur, zh:syncState.stationName || cur, en:'' }, ...stationList];
+  syncStationEl.innerHTML = list.map(s => `<option value="${esc(s.id)}">${esc(stationOptionLabel(s))}</option>`).join('');
+  syncStationEl.value = cur;
+}
+function applyStationList(list, src, isFallback){
+  setStationMaps(list);
+  Object.assign(stationListState, { src, count:list.length, isFallback:!!isFallback });
+  const name = TDX_STATIONS[syncState.stationId];
+  if (name) syncState.stationName = name;
+  rebuildStationOptions();
+}
+function readStationCache(){
+  try{
+    const o = JSON.parse(localStorage.getItem(STATION_CACHE_KEY) || 'null');
+    if (o && Number.isFinite(o.at) && Array.isArray(o.list) && o.list.length
+        && o.list.every(s => s && s.id && s.zh)) return o;
+  }catch(e){}
+  return null;
+}
+function writeStationCache(list, src){
+  try{ localStorage.setItem(STATION_CACHE_KEY, JSON.stringify({ at:Date.now(), src, list })); }catch(e){}
+}
+/* 開機時先套用快取（不論新舊、不打網路）：離線也能看到完整清單，已存的非 13 站選項也不會消失 */
+function applyCachedStationList(){
+  const c = readStationCache();
+  if (c) applyStationList(c.list, `${c.src}（快取）`, false);
+  else rebuildStationOptions();   // 沒快取：以內建 13 站重建，並補上「已存、但不在 13 站內」的選項
+}
+/* 有金鑰先走 TDX v3，沒金鑰（或失敗）退回 PTX v3；全部失敗才丟錯，訊息列出各來源原因 */
+async function fetchStationList(){
+  const errors = [];
+  for (const src of STATION_SOURCES){
+    const skip = sourceSkipReason(src);
+    if (skip){ errors.push(`${src.name}：${skip}`); continue; }
+    try{
+      const res = await tdxFetch(src, src.url());     // 401 → 清 token 重取再試一次（W-08）
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const list = normalizeStationRows(await res.json());
+      if (!list.length) throw new Error('0 筆');
+      return { list, src: src.name };
+    }catch(err){
+      errors.push(`${src.name}：${err.message}`);
+    }
+  }
+  throw new Error(`車站清單取得失敗（${errors.join('；')}）${noKeyHint()}`);
+}
+/* 確保車站清單已載入：24 小時內有快取就不打 API；失敗後 10 分鐘內不重試；同時間只會有一個請求。
+   失敗時沿用「過期快取」，連快取都沒有才退回內建 13 站。 */
+function ensureStationList(force){
+  if (stationListState.loading) return stationListState.loading;
+  const cached = readStationCache();
+  if (!force && cached && Date.now() - cached.at < STATION_CACHE_TTL){
+    if (stationListState.isFallback) applyStationList(cached.list, `${cached.src}（快取）`, false);
+    return Promise.resolve();
+  }
+  if (!force && stationListState.failedAt && Date.now() - stationListState.failedAt < STATION_RETRY_MS){
+    return Promise.resolve();
+  }
+  stationListState.loading = (async () => {
+    try{
+      const { list, src } = await fetchStationList();
+      writeStationCache(list, src);
+      stationListState.failedAt = 0;
+      stationListState.lastError = '';
+      applyStationList(list, src, false);
+    }catch(err){
+      stationListState.failedAt = Date.now();
+      stationListState.lastError = err.message;
+      console.warn('車站清單載入失敗，沿用現有清單：', err.message);
+      if (stationListState.isFallback && cached) applyStationList(cached.list, `${cached.src}（快取已過期）`, false);
+    }finally{
+      stationListState.loading = null;
+      updateSyncUI();
+    }
+  })();
+  return stationListState.loading;
+}
+
+/* ====== W-02：月台編號正規化 ======
+   Swagger：Platform 的 "00" 代表「尚未確定停靠月台」，實務上也常是空字串或 "0"。
+   這三種一律視為「未知」（回傳空字串），不能當成真的月台去比對。 */
+function normalizePlatform(p){
+  const s = String(p == null ? '' : p).trim();
+  return /^0*$/.test(s) ? '' : s;
+}
+
 /* v3 回傳 { StationLiveBoards:[…] }；v2 LiveBoard 直接回陣列 */
 function normalizeLiveBoards(data){
   if (Array.isArray(data)) return data;
@@ -1987,31 +2202,30 @@ function normalizeLiveBoards(data){
    · /v3/Rail/TRA/StationLiveBoard/Station/{StationID}
        → DelayTime（延誤分鐘）＋ RunningStatus（0 準點／1 誤點／2 取消）＋ Platform
          這是唯一提供「狀態列舉值」的端點，狀態就以此為準。
-   · /v3/Rail/TRA/TrainLiveBoard
+   · /v3/Rail/TRA/TrainLiveBoard/TrainNo/{TrainNo}   （W-06：只查看板會用到的前幾班，不再整批全線）
        → TrainStationStatus（0 進站中／1 在站上／2 已離站）＋ DelayTime
          只用來決定「要不要亮小圓點」與「是否已離站」。
    注意：v2 的 LiveBoard 沒有 RunningStatus，只有延誤分鐘，故不再列為首選。 */
 const LIVE_SOURCES = [
-  { name:'TDX v3 StationLiveBoard', auth:true,  url:id => `${TDX_BASE_V3}/StationLiveBoard/Station/${id}` },
-  { name:'PTX v3 StationLiveBoard', auth:false, url:id => `${PTX_BASE_V3}/StationLiveBoard/Station/${id}` },
+  { name:'TDX v3 StationLiveBoard', auth:true,  url:id => `${TDX_BASE_V3}/StationLiveBoard/Station/${encodeURIComponent(id)}?$format=JSON` },
+  { name:'PTX v3 StationLiveBoard', auth:false, url:id => `${PTX_BASE_V3}/StationLiveBoard/Station/${encodeURIComponent(id)}?$format=JSON` },
 ];
 const TRAIN_LIVE_SOURCES = [
-  { name:'TDX v3 TrainLiveBoard', auth:true,  url:() => `${TDX_BASE_V3}/TrainLiveBoard` },
-  { name:'PTX v3 TrainLiveBoard', auth:false, url:() => `${PTX_BASE_V3}/TrainLiveBoard` },
+  { name:'TDX v3 TrainLiveBoard', auth:true,  url:no => `${TDX_BASE_V3}/TrainLiveBoard/TrainNo/${encodeURIComponent(no)}?$format=JSON` },
+  { name:'PTX v3 TrainLiveBoard', auth:false, url:no => `${PTX_BASE_V3}/TrainLiveBoard/TrainNo/${encodeURIComponent(no)}?$format=JSON` },
 ];
+const TRAIN_LIVE_BUDGET_MS = 8000;   // 列車動態的總時限：超時就放棄（只影響圓點與提早下架，不該拖慢看板）
+const TRAIN_LIVE_EXTRA_ROWS = 2;     // 除了看板列數外，多查幾班（班次離站後由後面的班次遞補，才有動態可用）
 
 /* 依序嘗試來源：有金鑰先走 TDX，沒金鑰走免 token 的 PTX。
    任何一個回非空陣列就採用；全部失敗才丟錯，錯誤訊息會列出每個來源的原因。 */
 async function fetchStationLiveBoard(stationId){
   const errors = [];
-  const hasKey = !!(syncState.clientId && syncState.clientSecret);
   for (const src of LIVE_SOURCES){
-    if (src.auth && !hasKey){ errors.push(`${src.name}：未填金鑰`); continue; }
+    const skip = sourceSkipReason(src);
+    if (skip){ errors.push(`${src.name}：${skip}`); continue; }
     try{
-      const headers = { Accept:'application/json' };
-      if (src.auth) headers.Authorization = `Bearer ${await getValidToken()}`;
-      const res = await fetch(src.url(stationId), { headers });
-      if (res.status === 401 && src.auth){ tdxToken = null; throw new Error('401 認證失敗'); }
+      const res = await tdxFetch(src, src.url(stationId));   // 401 → 清 token 重取再試一次，仍 401 才降級（W-08）
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rows = normalizeLiveBoards(await res.json());
       if (rows.length){ syncState.liveSource = src.name; return rows; }
@@ -2020,124 +2234,181 @@ async function fetchStationLiveBoard(stationId){
       errors.push(`${src.name}：${err.message}`);
     }
   }
-  throw new Error(`即時看板取得失敗（${errors.join('；')}）`);
+  throw new Error(`即時看板取得失敗（${errors.join('；')}）${noKeyHint()}`);
 }
 
-/* 列車動態（TrainLiveBoard）：整批回傳目前正在線上的列車「所在車站」與狀態。
-   回傳 Map<TrainNo, {stationId, stationName, status, delay}>，用來判斷本月台是不是
-   「列車正進站中」（status 0）、「已離站」（status 2）等更精確的狀態。
-   這是選用來源：抓不到就回空 Map，不影響主要同步。 */
-async function fetchTrainLiveBoard(){
-  const hasKey = !!(syncState.clientId && syncState.clientSecret);
+/* 列車動態（TrainLiveBoard）：回傳 Map<TrainNo, {stationId, stationName, status, delay}>，
+   用來判斷「列車正進站中」（status 0）、「已離站」（status 2）等更精確的狀態。
+   W-06：不再每輪整批抓全線（約 169 列），只針對看板會用到的車次，逐班打
+         TrainLiveBoard/TrainNo/{no}（併發上限 5，與停靠站同模式）。
+   · 查詢列數 ≤ 傳入車次數；404／空陣列＝這班車目前不在線上，不算錯誤
+   · 整體有時限（TRAIN_LIVE_BUDGET_MS），超過就用已取得的部分
+   · 這是選用來源：抓不到就回（部分或空的）Map，不影響主要同步，也不會丟錯。 */
+function pickTrainPos(data, trainNo){
+  const rows = Array.isArray(data) ? data : ((data && (data.TrainLiveBoards || data.TrainLiveBoard)) || []);
+  const r = rows.find(x => String(x && x.TrainNo != null ? x.TrainNo : '').trim() === String(trainNo));
+  if (!r) return null;
+  const status = Number(r.TrainStationStatus);
+  return {
+    stationId: String(r.StationID || ''),
+    stationName: typeof r.StationName === 'string' ? r.StationName : String((r.StationName && r.StationName.Zh_tw) || ''),
+    status: Number.isFinite(status) ? status : NaN,   // 0 進站中／1 在站上／2 已離站
+    delay: Number(r.DelayTime || 0),
+    updateTime: r.UpdateTime || ''
+  };
+}
+async function fetchTrainLiveBoard(trainNos){
+  const nos = [...new Set((trainNos || []).map(n => String(n == null ? '' : n).trim()).filter(Boolean))];
+  syncState.posQueried = nos.length;
+  const map = new Map();
+  if (!nos.length) return map;
+  const deadline = Date.now() + TRAIN_LIVE_BUDGET_MS;
   for (const src of TRAIN_LIVE_SOURCES){
-    if (src.auth && !hasKey) continue;
-    try{
-      const headers = { Accept:'application/json' };
-      if (src.auth) headers.Authorization = `Bearer ${await getValidToken()}`;
-      const controller = new AbortController();
-      const timer = setTimeout(()=>controller.abort(), 12000);
-      let res;
-      try{
-        res = await fetch(src.url(), { headers, signal: controller.signal });
-      }finally{ clearTimeout(timer); }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const rows = Array.isArray(data) ? data : (data?.TrainLiveBoards || []);
-      const map = new Map();
-      for (const r of rows){
-        const no = String(r.TrainNo || '').trim();
-        if (!no) continue;
-        map.set(no, {
-          stationId: String(r.StationID || ''),
-          stationName: r.StationName?.Zh_tw || '',
-          status: Number(r.TrainStationStatus ?? NaN),   // 0 進站中／1 在站上／2 已離站
-          delay: Number(r.DelayTime || 0),
-          updateTime: r.UpdateTime || ''
-        });
+    if (sourceSkipReason(src)) continue;          // 選用來源：不可用就靜靜略過
+    let reached = 0, cursor = 0;
+    const workers = Array.from({ length: Math.min(5, nos.length) }, async () => {
+      while (cursor < nos.length){
+        const remain = deadline - Date.now();
+        if (remain <= 500) return;                       // 時限已到：剩下的班次不查了
+        const no = nos[cursor++];
+        try{
+          const res = await tdxFetch(src, src.url(no), { timeoutMs: Math.min(6000, remain) });
+          if (res.status === 404){ reached++; continue; }   // 這班目前不在線上
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          reached++;
+          const pos = pickTrainPos(await res.json(), no);
+          if (pos) map.set(no, pos);
+        }catch(err){
+          console.warn(`${src.name} ${no} 次取得失敗：`, err.message);
+        }
       }
-      if (map.size) syncState.trainLiveSource = src.name;
-      return map;
-    }catch(err){
-      console.warn(`${src.name} 取得失敗：`, err.message);
-    }
+    });
+    await Promise.all(workers);
+    if (reached){ syncState.trainLiveSource = src.name; return map; }   // 這個來源有通，就不再試下一個
+    if (Date.now() >= deadline - 500) break;
   }
-  return new Map();
+  return map;
 }
 
-function mapTDXTrainType(zh){
-  if (!zh) return '區間';
-  if (zh.includes('3000')) return '自強3000';   // W-06：TDX 實際字串為「自強(3000)」
-  if (zh.includes('普悠瑪')) return '普悠瑪';
-  if (zh.includes('太魯閣')) return '太魯閣';
-  if (zh.includes('莒光')) return '莒光號';
-  if (zh.includes('自強')) return '自強號';
-  if (zh.includes('區間快')) return '區間快';
-  if (zh.includes('區間')) return '區間';
-  if (zh.includes('觀光')) return '觀光列車';
+/* W-09：車種以官方 TrainTypeCode 為主（名稱字串會因版本不同而變，例如「自強(3000)」「普快車」），
+   Code 缺失或不認得時才退回名稱比對。
+   TrainTypeCode：1 太魯閣、2 普悠瑪、3 自強、4 莒光、5 復興、6 區間、7 普快、10 區間快。
+   自強（3）再看名稱是不是 3000 型。 */
+const TRAIN_TYPE_BY_CODE = {
+  1:'太魯閣', 2:'普悠瑪', 3:'自強號', 4:'莒光號', 5:'復興號', 6:'區間', 7:'普快', 10:'區間快'
+};
+function mapTDXTrainType(zh, code){
+  const name = String(zh || '');
+  const n = Number(String(code == null ? '' : code).trim());
+  if (String(code == null ? '' : code).trim() !== '' && Number.isInteger(n) && TRAIN_TYPE_BY_CODE[n]){
+    return (n === 3 && name.includes('3000')) ? '自強3000' : TRAIN_TYPE_BY_CODE[n];
+  }
+  if (!name) return '區間';
+  if (name.includes('3000')) return '自強3000';   // TDX 實際字串為「自強(3000)」
+  if (name.includes('普悠瑪')) return '普悠瑪';
+  if (name.includes('太魯閣')) return '太魯閣';
+  if (name.includes('莒光')) return '莒光號';
+  if (name.includes('自強')) return '自強號';
+  if (name.includes('復興')) return '復興號';
+  if (name.includes('區間快')) return '區間快';
+  if (name.includes('普快')) return '普快';
+  if (name.includes('區間')) return '區間';
+  if (name.includes('觀光')) return '觀光列車';
   return '區間';
 }
 
-// ===== 自動取得列車完整停靠站（TDX GeneralTrainTimetable） =====
-// 同一列車的時刻表在自動同步期間不會改變，快取避免每輪重複呼叫 API。
+// ===== 自動取得列車停靠站＋車次資訊（W-04／W-05） =====
+/* 來源優先順序（每種都是「TDX（有金鑰）→ PTX 備援」）：
+     1. DailyTrainTimetable/Today/TrainNo/{no}   今日實際班表（加開、改線、部分停駛都以它為準；StopTimes 帶每站 SuspendedFlag）
+     2. GeneralTrainTimetable/TrainNo/{no}       定期班表（有效期約一個月）
+     3. SpecificTrainTimetable/TrainNo/{no}      特殊車次（最後備援）
+   回應結構相同：TrainTimetables[]｛TrainInfo, StopTimes[]｝。
+   TrainInfo 帶有 DailyStation 班表沒有的欄位（身障／自行車／便當／哺乳室／行李旗標、Note、TripLine、起站），
+   所以這裡一併取回，由 fillStopsForTrains 寫回班次。 */
+const TIMETABLE_KINDS = [
+  { kind:'DailyTrain Today', path:no => `DailyTrainTimetable/Today/TrainNo/${no}` },
+  { kind:'General',          path:no => `GeneralTrainTimetable/TrainNo/${no}` },
+  { kind:'Specific',         path:no => `SpecificTrainTimetable/TrainNo/${no}` },
+];
+const TIMETABLE_SOURCES = TIMETABLE_KINDS.flatMap(k => [
+  { name:`TDX v3 ${k.kind}`, auth:true,  url:no => `${TDX_BASE_V3}/${k.path(encodeURIComponent(no))}?$format=JSON` },
+  { name:`PTX v3 ${k.kind}`, auth:false, url:no => `${PTX_BASE_V3}/${k.path(encodeURIComponent(no))}?$format=JSON` },
+]);
+/* 快取以「日期｜車次」為鍵（今日班表隔天就不同）；Promise 存進去，並發請求共用同一個。
+   失敗時不留快取，下次同步可重試。 */
 const trainStopsCache = new Map();
-/* 停靠站只存在於 v3 的 GeneralTrainTimetable（v2 同路徑會 404）。
-   有金鑰走 TDX v3；沒有金鑰走免 token 的 PTX v3。 */
-async function fetchTrainTimetable(trainNo, retryCount = 0){
-  const no = encodeURIComponent(trainNo);
-  const useToken = !!(syncState.clientId && syncState.clientSecret);
-  let url;
-  if (useToken){
-    await getValidToken();
-    url = `${TDX_BASE_V3}/GeneralTrainTimetable/TrainNo/${no}`;
-  }else{
-    url = `${PTX_BASE_V3}/GeneralTrainTimetable/TrainNo/${no}`;
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(()=>controller.abort(), 10000);
-  let res;
-  try{
-    const headers = {Accept:'application/json'};
-    if (useToken) headers.Authorization = `Bearer ${tdxToken}`;
-    res = await fetch(url, {headers, signal:controller.signal});
-  }catch(err){
-    if (err.name==='AbortError') throw new Error('取得停靠站逾時');
-    throw err;
-  }finally{ clearTimeout(timeout); }
-  if (res.status === 401 && useToken){
-    if (retryCount >= 1) throw new Error('TDX 時刻表認證失敗（401）');
-    tdxToken = null;
-    return fetchTrainTimetable(trainNo, retryCount + 1);
-  }
-  if (!res.ok) throw new Error(`取得 ${trainNo} 次時刻表失敗 (HTTP ${res.status})`);
-  return res.json();
-}
 function unpackTrainTimetables(data){
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.TrainTimetables)) return data.TrainTimetables;
   if (data?.TrainTimetables) return [data.TrainTimetables];
   return data ? [data] : [];
 }
+const hasStopTimes = x => Array.isArray(x?.StopTimes) && x.StopTimes.length > 0;
+/* 依序嘗試各來源，取第一個「真的有停靠站」的結果；全部失敗才丟錯，訊息列出各來源原因。 */
+async function fetchTrainTimetable(trainNo){
+  const errors = [];
+  for (const src of TIMETABLE_SOURCES){
+    const skip = sourceSkipReason(src);
+    if (skip){ errors.push(`${src.name}：${skip}`); continue; }
+    try{
+      const res = await tdxFetch(src, src.url(trainNo), { timeoutMs: 8000 });
+      if (res.status === 404){ errors.push(`${src.name}：查無此車次`); continue; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = unpackTrainTimetables(await res.json());
+      if (!rows.some(hasStopTimes)){ errors.push(`${src.name}：無停靠站資料`); continue; }
+      return { rows, src: src.name };
+    }catch(err){
+      errors.push(`${src.name}：${err.message}`);
+    }
+  }
+  throw new Error(`${trainNo} 次時刻表取得失敗（${errors.join('；')}）${noKeyHint()}`);
+}
+/* NameType（{Zh_tw,En}）或純字串都轉成中文字串；v3 的 Note／StartingStationName 是 NameType，v2 是字串 */
+function nameText(v){
+  if (v == null) return '';
+  return typeof v === 'string' ? v : String(v.Zh_tw || v.Zh || '');
+}
+/* TrainInfo → 班次要補的欄位（W-05） */
+function trainInfoFields(info){
+  const f = v => Number(v ?? 0) === 1;
+  info = info || {};
+  return {
+    flags: {
+      wheelchair: f(info.WheelChairFlag), bike: f(info.BikeFlag), dining: f(info.DiningFlag),
+      breastfeed: f(info.BreastFeedFlag ?? info.BreastFeedingFlag),
+      package: f(info.PackageServiceFlag), extra: f(info.ExtraTrainFlag)
+    },
+    note: nameText(info.Note).trim(),
+    tripLine: Number(info.TripLine ?? NaN),
+    start: nameText(info.StartingStationName).trim()
+  };
+}
 async function getTrainStops(train, stationId, destination){
   const no = String(train.no || '').trim();
   if (!no) return null;
-  if (!trainStopsCache.has(no)){
-    const request = fetchTrainTimetable(no).then(unpackTrainTimetables).catch(err=>{
-      trainStopsCache.delete(no); // 失敗時允許下次同步重試
+  const day = taiwanDateString();
+  const key = `${day}|${no}`;
+  if (!trainStopsCache.has(key)){
+    for (const k of [...trainStopsCache.keys()]) if (!k.startsWith(day + '|')) trainStopsCache.delete(k);   // 清掉昨天的
+    const request = fetchTrainTimetable(no).catch(err => {
+      trainStopsCache.delete(key); // 失敗時允許下次同步重試
       throw err;
     });
-    trainStopsCache.set(no, request);
+    trainStopsCache.set(key, request);
   }
-  const candidates = await trainStopsCache.get(no);
-  const ranked = candidates.filter(x=>Array.isArray(x?.StopTimes) && x.StopTimes.length)
+  const { rows: candidates, src } = await trainStopsCache.get(key);
+  if (src) syncState.stopsSource = src;
+  const ranked = candidates.filter(hasStopTimes)
     .map(x=>{
       const info = x.TrainInfo || {};
       const stopIds = x.StopTimes.map(st=>String(st.StationID || ''));
-      const endName = info.EndingStationName?.Zh_tw || '';
+      const endName = nameText(info.EndingStationName);
       return {x, score:(stopIds.includes(String(stationId)) ? 2 : 0) + (endName && endName===destination ? 1 : 0)};
     }).sort((a,b)=>b.score-a.score);
-  const stopTimes = ranked[0]?.x.StopTimes || [];
+  const best = ranked[0]?.x;
+  const stopTimes = best?.StopTimes || [];
   if (!stopTimes.length) return null;
-  const zh=[], en=[];
+  const zh=[], en=[], suspendedStops=[];
   for (const stop of stopTimes){
     const name = stop.StationName;
     const zhName = typeof name==='string' ? name : (name?.Zh_tw || '');
@@ -2145,22 +2416,43 @@ async function getTrainStops(train, stationId, destination){
     if (zhName && zh.at(-1)!==zhName){
       zh.push(zhName);
       en.push(enName || STATIONS[zhName] || zhName);
+      if (Number(stop.SuspendedFlag) === 1) suspendedStops.push(zhName);   // 今日該站停駛（DailyTrain 才有這個旗標）
     }
   }
-  return zh.length ? {stops:zh.join('、'), stopsEn:en.join(', ')} : null;
+  if (!zh.length) return null;
+  return { stops:zh.join('、'), stopsEn:en.join(', '), suspendedStops, src, ...trainInfoFields(best.TrainInfo) };
+}
+/* 把 TrainInfo 的欄位寫回班次；人工改過的欄位（t.human）一律不覆寫。 */
+function applyTrainInfo(train, got){
+  const h = train.human || {};
+  train.flags = { ...(train.flags || {}), ...got.flags,
+                  extra: !!(got.flags.extra || train.flags?.extra || train.service === 2) };   // ServiceType 2＝加開
+  if (got.note) train.note = got.note;
+  if (Number.isFinite(got.tripLine)){
+    train.tripLine = got.tripLine;                                          // 1 山線／2 海線／3 成追線／0 不經山海線
+    if (!h.rm) train.rm = got.tripLine === 1 ? '山' : (got.tripLine === 2 ? '海' : '');
+  }
+  if (got.start && !train.start) train.start = got.start;
+  train.infoFilled = true;
 }
 async function fillStopsForTrains(trains, stationId){
   let cursor=0, filled=0, failed=0;
   const workers=Array.from({length:Math.min(5,trains.length)}, async()=>{
     while(cursor<trains.length){
       const train=trains[cursor++];
-      if (train.stops) continue;
+      const needStops = !train.stops;
+      const needInfo  = !train.infoFilled;
+      if (!needStops && !needInfo) continue;
       try{
-        const stops=await getTrainStops(train,stationId,train.dest);
-        if (stops){ train.stops=stops.stops; train.stopsEn=stops.stopsEn; filled++; }
-        else failed++;
+        const got=await getTrainStops(train,stationId,train.dest);
+        if (got){
+          if (needStops && !(train.human && train.human.stops)){
+            train.stops=got.stops; train.stopsEn=got.stopsEn; train.suspendedStops=got.suspendedStops; filled++;
+          }
+          applyTrainInfo(train, got);
+        }else if (needStops) failed++;
       }catch(err){
-        failed++;
+        if (needStops) failed++;
         console.warn(`無法取得 ${train.no} 次停靠站：`,err);
       }
     }
@@ -2185,12 +2477,17 @@ function taiwanTimeString(d=new Date(), seconds=false){
   return seconds ? time : time.slice(0,5);
 }
 /* 當日班表（v3 DailyStationTimetable）：每列都有 SuspendedFlag（列車於本站停駛）與
-   ServiceType（定期／加開／郵輪／專列），比 v2 DailyTimetable 更適合標示「停駛」。 */
-// v3 沒有「TrainDate + Station」的路徑，改用 $filter 篩本站（實測只回 78KB，不是全站 7MB）
-const dailyV3 = (base,id,date)=>`${base}/DailyStationTimetable/TrainDate/${date}?$filter=${encodeURIComponent(`StationID eq '${id}'`)}&$format=JSON`;
+   ServiceType（定期／加開／郵輪／專列），比 v2 DailyTimetable 更適合標示「停駛」。
+   W-03：官方有直達路徑 DailyStationTimetable/Today/Station/{StationID}，優先使用（回傳與 $filter 版相同，
+   實測高雄站約 200 筆）；TrainDate/{date}?$filter= 留作第二備援——查「非今天」的日期、或 Today 失敗時用。
+   兩者的回傳結構相同（StationTimetables[].TimeTables[]），共用 unpackDailyStation。 */
+const dailyToday  = (base,id)=>`${base}/DailyStationTimetable/Today/Station/${encodeURIComponent(id)}?$format=JSON`;
+const dailyByDate = (base,id,date)=>`${base}/DailyStationTimetable/TrainDate/${date}?$filter=${encodeURIComponent(`StationID eq '${id}'`)}&$format=JSON`;
 const DAILY_SOURCES = [
-  { name:'TDX v3', auth:true,  url:(id,date)=>dailyV3(TDX_BASE_V3,id,date) },
-  { name:'PTX v3', auth:false, url:(id,date)=>dailyV3(PTX_BASE_V3,id,date) },
+  { name:'TDX v3 Today',     auth:true,  todayOnly:true, url:(id)=>dailyToday(TDX_BASE_V3,id) },
+  { name:'PTX v3 Today',     auth:false, todayOnly:true, url:(id)=>dailyToday(PTX_BASE_V3,id) },
+  { name:'TDX v3 TrainDate', auth:true,  url:(id,date)=>dailyByDate(TDX_BASE_V3,id,date) },
+  { name:'PTX v3 TrainDate', auth:false, url:(id,date)=>dailyByDate(PTX_BASE_V3,id,date) },
   { name:'TDX v2', auth:true,  url:(id,date)=>`${TDX_BASE}/DailyTimetable/Station/${id}/${date}?$format=JSON` },
   { name:'PTX v2', auth:false, url:(id,date)=>`${PTX_BASE_V2}/DailyTimetable/Station/${id}/${date}?$format=JSON` },
 ];
@@ -2213,41 +2510,38 @@ function unpackDailyStation(data){
   if (Array.isArray(data?.DailyTimetables)) return data.DailyTimetables;
   return [];
 }
-/* 當日班表：有金鑰先走 TDX v3，退而求其次依序嘗試 PTX v3 / TDX v2 / PTX v2。 */
-async function fetchStationDailyTimetable(stationId, date, retryCount=0){
+/* 當日班表：依序 Today 直達路徑（TDX → PTX）→ TrainDate+$filter（TDX → PTX）→ v2（TDX → PTX）；
+   「Today」只在查詢日期就是臺灣今天時才用。
+   W-11：官方 DailyStationTimetable 的 UpdateInterval 是 14400 秒（4 小時），原本 10 分鐘快取過短；
+   改 1 小時（兼顧臨時停駛／加開班表異動與 API 額度）。本站即時停駛另由 StationLiveBoard 的 RunningStatus 即時反映，
+   不靠班表快取。 */
+const DAILY_CACHE_TTL = 60*60*1000;
+async function fetchStationDailyTimetable(stationId, date){
   const key=`${stationId}/${date}`;
   const cached=dailyStationCache.get(key);
-  if (cached && Date.now()-cached.at < 10*60*1000){
+  if (cached && Date.now()-cached.at < DAILY_CACHE_TTL){
     syncState.dailySource = cached.src;
     return cached.data;
   }
-  const hasKey=!!(syncState.clientId&&syncState.clientSecret);
+  const isToday = date === taiwanDateString();
   const errors=[];
   for (const src of DAILY_SOURCES){
-    if (src.auth && !hasKey){ errors.push(`${src.name}：未填金鑰`); continue; }
-    const controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),12000);
+    if (src.todayOnly && !isToday) continue;     // Today 路徑只能查「今天」
+    const skip = sourceSkipReason(src);
+    if (skip){ errors.push(`${src.name}：${skip}`); continue; }
     try{
-      const headers={Accept:'application/json'};
-      if (src.auth){ await getValidToken(); headers.Authorization=`Bearer ${tdxToken}`; }
-      const res=await fetch(src.url(stationId,date),{headers,signal:controller.signal});
-      if (res.status===401 && src.auth && retryCount<1){
-        tdxToken=null;
-        clearTimeout(timeout);
-        return fetchStationDailyTimetable(stationId,date,retryCount+1);
-      }
+      const res = await tdxFetch(src, src.url(stationId,date));   // 401 → 清 token 重取再試一次（W-08）
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data=await res.json();
-      const rows=unpackDailyStation(data);
+      const rows=unpackDailyStation(await res.json());
       if (!rows.length) throw new Error('0 筆');
       dailyStationCache.set(key,{at:Date.now(),data:rows,src:src.name});
       syncState.dailySource=src.name;
       return rows;
     }catch(err){
-      errors.push(`${src.name}：${err.name==='AbortError'?'逾時':err.message}`);
-    }finally{ clearTimeout(timeout); }
+      errors.push(`${src.name}：${err.message}`);
+    }
   }
-  throw new Error(`當日班表取得失敗（${errors.join('；')}）`);
+  throw new Error(`當日班表取得失敗（${errors.join('；')}）${noKeyHint()}`);
 }
 /* 把 TDX 的「無日期時間字串」轉成 { time:'HH:mm', ts:毫秒 }
    支援 "HH:mm" / "HH:mm:ss" / "2026-11-10T00:23:00+08:00" 三種寫法。
@@ -2304,14 +2598,18 @@ function mapTDXDailyStationTrain(item, date){
   const service   = Number(item.ServiceType ?? 1);   // 1 定期／2 加開／3 郵輪／4 專列
 
   const typeRaw = (info.TrainTypeName && info.TrainTypeName.Zh_tw) || '';
+  const typeCode = info.TrainTypeCode ?? item.TrainTypeCode;
   return {
     time: parsed.time, ts,
     dest: end.Zh_tw || '', destEn: end.En || '',
     no: String(info.TrainNo || item.TrainNo || ''),
-    type: mapTDXTrainType(typeRaw),
+    type: mapTDXTrainType(typeRaw, typeCode),
     typeRaw,
+    typeCode: typeCode == null ? '' : String(typeCode),
     typeId: String(info.TrainTypeID || item.TrainTypeID || ''),
-    note: String(info.Note || item.Note || ''),
+    note: nameText(info.Note || item.Note).trim(),   // v3 的 Note 是 NameType（{Zh_tw,En}），v2 是字串；兩者都轉成中文字串
+    // 注意：v3 DailyStationTimetable 的 TimeTable 沒有下面這些欄位（旗標／Note／TripLine／起站），
+    // 這裡只是 v2 扁平格式的相容讀取；v3 實際由 fillStopsForTrains 從 TrainInfo 補上（applyTrainInfo）。
     tripLine: Number(info.TripLine ?? item.TripLine ?? 0),
     flags: {
       wheelchair: Number(info.WheelChairFlag ?? 0) === 1,
@@ -2367,8 +2665,9 @@ function mapTDXToTrain(item){
     time: parsed.time, ts,
     dest: destName.Zh_tw || '', destEn: destName.En || '',
     no: String(item.TrainNo || ''),
-    type: mapTDXTrainType(item.TrainTypeName && item.TrainTypeName.Zh_tw),
-    platform: String(item.Platform || ''), direction: item.Direction,   // W-05：月台／方向
+    type: mapTDXTrainType(item.TrainTypeName && item.TrainTypeName.Zh_tw, item.TrainTypeCode),
+    typeCode: item.TrainTypeCode == null ? '' : String(item.TrainTypeCode),
+    platform: normalizePlatform(item.Platform), direction: item.Direction,   // W-02：空字串／"0"／"00"（未定）一律視為未知月台
     typeRaw: (item.TrainTypeName && item.TrainTypeName.Zh_tw) || '',
     typeId: String(item.TrainTypeID || ''),
     tripLine: Number(item.TripLine ?? 0),
@@ -2382,19 +2681,35 @@ function mapTDXToTrain(item){
   };
 }
 
-/* 只有列車動畫時（沒有本站看板）的補充：
-   TrainLiveBoard 只告訴我們「列車在哪一站、要不要進站」，那是燈號（動態）而不是狀態文字，
-   所以這裡只把位置記進 trainPos，狀態文字保持 準點／晚點／停駛／未知 四種。
-   若列車已在本站離站（TrainStationStatus=2），直接標成已離站 → 由看板移除、換下一班。 */
-function statusFromTrainLive(pos, fallback){
+/* W-06：列車動態只替「看板會用到」的班次查詢——看板列數＋幾班遞補。
+   略過停駛班次（沒有動態可言）與人工新增的班次（車次是自訂的，TDX 查不到）。 */
+function trainLiveCandidates(trains){
+  const want = Math.max(Number(state.rowCount) || 2, 2) + TRAIN_LIVE_EXTRA_ROWS;
+  return trains.filter(t => t && t.no && t.st !== 'cancel' && !t.manual).slice(0, want).map(t => String(t.no));
+}
+/* 把列車動態（TrainLiveBoard）疊到班次上：
+   · 位置記進 trainPos → showSignal 決定要不要亮小圓點、isDeparted 判斷是否已離站
+   · 列車已在本站離站（TrainStationStatus=2）→ st='departed'，看板移除、由下一班遞補
+   · 本站即時看板沒有這班車（t.live 為 false）時，延誤分鐘以列車動態為準（這是全線資料，
+     比本站看板早一步反映），並把狀態同步成「晚N分」，否則會出現「準點」卻有誤點分鐘數的矛盾 */
+function applyTrainPos(t, pos){
+  if (!pos) return t;
+  const out = { ...t, trainPos: pos };
   const atHere = String(pos.stationId) === String(syncState.stationId);
-  if (atHere && pos.status === 2) return 'departed';
-  return fallback;
+  if (atHere && pos.status === 2 && out.st !== 'cancel') out.st = 'departed';
+  if (!t.live){
+    out.min = pos.delay || t.min || 0;
+    out.live = true;
+    if (out.st === 'ontime' && out.min > 0) out.st = 'delay';
+  }
+  return out;
 }
 
 /* 人工資料優先保護：同步只更新「機器可推得的欄位」，
    人工班次（manual）與人工改過的欄位（t.human）一律保留。 */
-const HUMAN_FIELDS = ['dest','destEn','type','stops','stopsEn','remark','remarkEn','cars'];
+/* 'rm'（山／海線）：編輯器改了會標 human.rm，但原清單漏了它，導致人工改的山海線每輪同步都被 TDX 覆寫；
+   W-05 之後 rm 會由 TrainInfo.TripLine 自動帶入，這個保護就更重要。 */
+const HUMAN_FIELDS = ['dest','destEn','type','stops','stopsEn','remark','remarkEn','cars','rm'];
 function mergeHumanTrains(fresh, prev){
   const list = Array.isArray(prev) ? prev : [];
   const keyOf = t => `${String(t.no||'').trim()}|${String(t.time||'').trim()}`;
@@ -2429,20 +2744,22 @@ async function performSync(){
   syncState.lastMessage = null;
   syncState.liveSource = null;
   syncState.trainLiveSource = null;
+  syncState.stopsSource = null;
+  syncState.posQueried = 0;
   syncState.dailySource = null;
   updateSyncUI();
+  ensureStationList();    // W-01：不等待、不影響本輪同步；24 小時內有快取就不會打 API
 
   try {
     const stationId = syncState.stationId;
     const date = taiwanDateString();
 
-    // 三個來源並行抓取；任何一個失敗都不會讓整個同步中斷（有班表就先用班表）。
-    const [liveResult, dailyResult, trainLiveResult] = await Promise.allSettled([
+    // 兩個來源並行抓取；任何一個失敗都不會讓整個同步中斷（有班表就先用班表）。
+    // 列車動態（TrainLiveBoard）要等「看板會用到的車次」確定後才查（W-06），所以不在這一批。
+    const [liveResult, dailyResult] = await Promise.allSettled([
       fetchStationLiveBoard(stationId),
-      fetchStationDailyTimetable(stationId, date),
-      fetchTrainLiveBoard()
+      fetchStationDailyTimetable(stationId, date)
     ]);
-    const trainLive = trainLiveResult.status === 'fulfilled' ? trainLiveResult.value : new Map();
     const liveRaw   = liveResult.status === 'fulfilled' ? liveResult.value : [];
     const liveError = liveResult.status === 'rejected'  ? liveResult.reason : null;
     const dailyRows = dailyResult.status === 'fulfilled' ? dailyResult.value : [];
@@ -2462,32 +2779,12 @@ async function performSync(){
       if (t.no && Number.isFinite(t.ts)) byNo.set(t.no, t);
     }
     const liveByNo = new Map(liveMapped.map(t => [String(t.no), t]));
-    /* 完整班表為底，再用即時資料覆蓋成更精確的狀態：
-       · 本站即時看板（StationLiveBoard）勝出 → 時間、月台、延誤、RunningStatus 都是本站的實況
-       · 只有列車動態（TrainLiveBoard）時 → 用 TrainStationStatus 補「進站中／已離站」，
-         延誤分鐘也一併帶入（這是全線資料，比本站看板早一步反映） */
+    /* 完整班表為底，再用本站即時看板（StationLiveBoard）覆蓋成更精確的狀態：
+       時間、月台、延誤、RunningStatus 都是本站的實況。
+       列車動態（進站中／已離站）在後面、只針對看板車次查詢之後才疊上去（applyTrainPos）。 */
     let trains = [...byNo.values()].map(scheduled => {
       const live = liveByNo.get(String(scheduled.no));
-      if (live){
-        const merged = {...scheduled, ...live, stops:'', stopsEn:''};
-        // 本站看板沒說列車在哪一站；用列車動態補「已離站」，其餘（進站中／停靠中）留給圓點動畫
-        const pos = trainLive.get(String(live.no));
-        if (pos){
-          merged.trainPos = pos;
-          if (merged.st !== 'cancel' && String(pos.stationId) === String(syncState.stationId) && pos.status === 2){
-            merged.st = 'departed';
-          }
-        }
-        return merged;
-      }
-      const pos = trainLive.get(String(scheduled.no));
-      if (!pos) return scheduled;
-      const st = statusFromTrainLive(pos, scheduled.st);
-      return {...scheduled,
-        st: st || scheduled.st,
-        min: pos.delay || scheduled.min || 0,
-        live: st ? true : scheduled.live,
-        trainPos: pos};
+      return live ? {...scheduled, ...live, stops:'', stopsEn:''} : scheduled;
     });
     // 保留即時看板有、但當日班表未列出的臨時／特殊車次。
     for (const live of liveMapped){
@@ -2497,26 +2794,35 @@ async function performSync(){
     trains = mergeHumanTrains(trains, state.trains);
     trains = trains.filter(t => Number.isFinite(tsOf(t)) && !isDeparted(t, nowMs))
                    .sort((a, b) => tsOf(a) - tsOf(b));
-    // 修好解析後這裡會是「當日全部剩餘班次」（實測約 200 筆）；
-    // 看板只顯示 2–4 列，一次塞 200 列會讓 render/編輯器重建超過 1 秒，也讓停靠站 API 爆量。
-    const totalBeforeTrim = trains.length;
 
     let platNote = '';
-    const myPlat = String(state.platform || '').trim().toUpperCase();
+    /* W-02：兩邊都先正規化再比對——"00"／"0"／空字串＝尚未確定月台，視為「未知」：
+       不算有月台資料，也不會被月台過濾誤殺（未知月台的班次一律保留）。 */
+    const myPlat = normalizePlatform(state.platform).toUpperCase();
     if (syncState.matchPlatform !== false && myPlat){
-      const hasPlatData = trains.some(t => String(t.platform || '').trim());
-      const platformMatches = trains.filter(t => String(t.platform || '').trim().toUpperCase() === myPlat);
+      const platOf = t => normalizePlatform(t.platform).toUpperCase();
+      const hasPlatData = trains.some(t => platOf(t));
+      const platformMatches = trains.filter(t => platOf(t) === myPlat);
       if (!hasPlatData){
-        platNote = '・TDX 未提供月台資料，顯示全站班表';
+        platNote = '・TDX 未提供月台資料（空白或 00＝未定），顯示全站班表';
       }else if (platformMatches.length){
-        // 當日班表沒有月台欄位，保留未知月台的班表列，避免漏車。
-        trains = trains.filter(t => !t.platform || String(t.platform).trim().toUpperCase() === myPlat);
-        platNote = `・月台 ${myPlat}（尚未分配月台者仍顯示）`;
+        // 當日班表沒有月台欄位、TDX 也可能回 00：保留未知月台的班表列，避免漏車。
+        trains = trains.filter(t => !platOf(t) || platOf(t) === myPlat);
+        platNote = `・月台 ${myPlat}（空白／00 未定月台者仍顯示）`;
       }else{
         platNote = `・月台 ${myPlat} 目前無班次資料，顯示全站班表`;
       }
     }
 
+    /* W-06：列車動態只替「看板會用到」的前幾班查（看板列數＋2 班遞補），逐班打
+       TrainLiveBoard/TrainNo/{no}；已離站的班次在這裡就移除、由後面的班次遞補，所以不會閃現後又消失。 */
+    const trainLive = await fetchTrainLiveBoard(trainLiveCandidates(trains));
+    trains = trains.map(t => applyTrainPos(t, trainLive.get(String(t.no))))
+                   .filter(t => !isDeparted(t, Date.now()))
+                   .sort((a, b) => tsOf(a) - tsOf(b));     // 動態帶來的延誤會改變實際發車順序，要重排（停靠站才會抓對班次）
+    // 這裡是「當日全部剩餘班次」（實測約 200 筆，已套用月台過濾）；
+    // 看板只顯示 2–4 列，一次塞 200 列會讓 render/編輯器重建超過 1 秒，也讓停靠站 API 爆量。
+    const totalBeforeTrim = trains.length;
     trains = trains.slice(0, MAX_TRAINS);
 
     const now = new Date();
@@ -2525,13 +2831,14 @@ async function performSync(){
     const n = trains.length;
     syncState.boardCount = liveRaw.length;
     syncState.posCount  = trainLive.size;
+    const posQueried = syncState.posQueried || 0;
     const liveCount = trains.filter(t => t.live).length;   // 真正有即時資料的筆數
     const boardCount = trains.filter(t => t.runningStatus !== undefined && t.runningStatus !== null).length;
     const posCount = trainLive.size;
     const stateBits = [
       `即時狀態 ${liveCount}/${n} 筆`,
       boardCount ? `本站看板 ${boardCount} 筆（RunningStatus）` : (liveError ? '本站看板異常' : '本站看板尚無班次'),
-      posCount ? `列車動態 ${posCount} 列（TrainLiveBoard）` : '列車動態未取得'
+      posQueried ? `列車動態 ${posCount}/${posQueried} 列（TrainLiveBoard）` : '無班次可查列車動態'
     ].join('・');
     const sourceNote = `${syncState.dailySource ? syncState.dailySource + ' 班表' : '班表'}＋${stateBits}`;
     const trimNote = totalBeforeTrim > n ? `（顯示前 ${n} 筆，共 ${totalBeforeTrim} 筆）` : '';
@@ -2603,6 +2910,7 @@ function loadSyncStateIntoUI(){
   tdxClientIdEl.value = syncState.clientId;
   tdxClientSecretEl.value = syncState.clientSecret;
   if (syncMatchEl) syncMatchEl.checked = syncState.matchPlatform !== false;   // W-05
+  if (syncAllowPtxEl) syncAllowPtxEl.checked = syncState.allowPtx !== false;   // W-10
   updateSyncUI();
 }
 
@@ -2610,6 +2918,7 @@ function loadSyncStateIntoUI(){
 syncModeEl.addEventListener('change', e=>{
   syncState.mode = e.target.value;
   syncState.lastError = null;
+  if (syncState.mode !== 'off') ensureStationList();   // W-01：啟用同步才載入車站清單（關閉模式不打任何 API）
   if (syncState.mode === 'auto') performSync(); // 切換自動時立即抓一次
   startSyncTimer();
   updateSyncUI();
@@ -2634,6 +2943,14 @@ if (syncMatchEl) syncMatchEl.addEventListener('change', e=>{   // W-05
   saveSettings();
 });
 
+if (syncAllowPtxEl) syncAllowPtxEl.addEventListener('change', e=>{   // W-10
+  syncState.allowPtx = e.target.checked;
+  stationListState.failedAt = 0;        // 規則變了，車站清單下次同步重新嘗試
+  syncState.lastMessage = null;         // 舊訊息的來源判斷已不適用
+  updateSyncUI();
+  saveSettings();
+});
+
 syncIntervalEl.addEventListener('change', e=>{
   syncState.interval = parseInt(e.target.value, 10) || 60;
   startSyncTimer();
@@ -2644,12 +2961,14 @@ syncIntervalEl.addEventListener('change', e=>{
 tdxClientIdEl.addEventListener('input', e=>{
   syncState.clientId = e.target.value;
   tdxToken = null; // 憑證變更，重新取得 token
+  stationListState.failedAt = 0;   // W-01：換了金鑰，下次同步時重新嘗試載入車站清單
   saveSettings();
 });
 
 tdxClientSecretEl.addEventListener('input', e=>{
   syncState.clientSecret = e.target.value;
   tdxToken = null;
+  stationListState.failedAt = 0;
   saveSettings();
 });
 
@@ -2675,6 +2994,8 @@ btnTestToken.addEventListener('click', async ()=>{
 });
 
 loadSettings();
+applyCachedStationList();    // W-01：先用快取的完整車站清單重建下拉（不打網路），已存的非 13 站選項才選得回來
+if (syncState.mode !== 'off') ensureStationList();   // 快取過期才會真的打 API；關閉模式不打
 syncLangPills();
 showTab(activeTab, false);   // 讀到設定後再套一次（分頁與預覽都要最新狀態）
 buildEditor();
