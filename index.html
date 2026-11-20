@@ -185,7 +185,7 @@
 
   /* ===== 底部：跑馬燈＋時鐘 ===== */
   .foot{
-    height:78px;display:flex;align-items:center;
+    height:80px;display:flex;align-items:center;   /* 與 screenHeight() 的 80 一致：底部不再多出 2px 黑邊，底列才是真正置中 */
     padding:0 var(--fpad);             /* 底部列用滿整個螢幕寬度，不受左右月台邊欄限制：
                                           跑馬燈左緣對齊左上月台格、時鐘右緣對齊右上月台格 */
     border-top:2px solid #1d232c;
@@ -193,14 +193,39 @@
   .ticker{flex:1;min-width:0;height:100%;overflow:hidden;position:relative;margin-right:28px;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 36px),transparent);
             mask-image:linear-gradient(90deg,transparent 0,#000 24px,#000 calc(100% - 36px),transparent)}
-  .ticker-track{position:absolute;top:50%;transform:translateY(-50%);white-space:nowrap;font-size:31px;font-weight:600;color:#eef1f5;letter-spacing:2px;will-change:transform}
+  /* 跑馬燈帶子：由一段一段「訊息」接起來（見 JS 的 tickerSegs）。
+     固定 line-height：中文段與英文段的行框一樣高、基線一致，換語言時文字不會上下跳；
+     垂直位置由 JS 量字型後寫入 --ticker-dy（見 alignFoot），不靠 line-height:normal 的字型留白。 */
+  .ticker-track{
+    position:absolute;left:0;top:calc(50% + var(--ticker-dy,0px));transform:translateY(-50%);
+    display:flex;width:max-content;
+    white-space:nowrap;font-size:31px;font-weight:600;color:#eef1f5;letter-spacing:2px;line-height:1.3;
+    will-change:transform;
+  }
+  .ticker-track .tseg{flex:none;white-space:nowrap}
+  /* 時鐘：數字放在固定 line-height:1 的單一行框裡；冒號改成「畫」出來的兩個點。
+       · 字型的冒號字形，兩點多半對齊小寫 x 高度，比數字（大寫字高）整體偏低 → 看起來「掉下去」；
+         這裡的冒號是「高度＝數字高、底邊貼基線」的方塊，兩點落在 27%／73%，永遠對稱在數字正中。
+       · 整塊的垂直位移 --clock-dy 由 JS 依「這台電腦實際用到的字型」量測後寫入（見 alignFoot），
+         不靠各字型（DIN／Bahnschrift／Segoe UI／PingFang…）參差不齊的行距。 */
   .clock{
     flex:0 0 auto;height:100%;display:flex;align-items:center;justify-content:flex-end;
+    position:relative;top:var(--clock-dy,0px);
     margin-right:-4px;                 /* 抵銷最後一個數字的 letter-spacing，讓數字右緣貼齊內容框 */
-    font-size:54px;font-weight:600;letter-spacing:4px;font-variant-numeric:tabular-nums;
+    font-size:54px;font-weight:600;letter-spacing:4px;line-height:1;font-variant-numeric:tabular-nums;
     font-family:"DIN Alternate","Bahnschrift","Roboto Mono","Segoe UI",sans-serif;
   }
-  .clock .colon{margin:0 12px;animation:blink 1s steps(1) infinite}
+  .clock .ck{display:block;white-space:nowrap}
+  .clock .colon{
+    display:inline-block;position:relative;vertical-align:baseline;
+    width:8px;height:var(--digit-h,.72em);margin:0 14px;   /* 高度＝這台電腦字型的數字高（JS 量測），量不到才用 .72em */
+    animation:blink 1s steps(1) infinite;
+  }
+  .clock .colon::before,.clock .colon::after{
+    content:"";position:absolute;left:0;width:8px;height:8px;border-radius:2px;background:currentColor;
+  }
+  .clock .colon::before{top:calc(27% - 4px)}
+  .clock .colon::after{top:calc(73% - 4px)}
 
   /* ===== 下方：說明與編輯區 ===== */
   /* =====================================================================
@@ -312,9 +337,6 @@
   .toggle input:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
   .toggle .t{font-size:13px;color:#dfe6ee;line-height:1.45}
   .toggle .t small{display:block;font-size:11.5px;color:#7f8b99;margin-top:2px;line-height:1.5}
-  .check-group{margin:16px 0 0;padding:12px 14px;background:#0e1318;border:1px solid #212932;border-radius:9px}
-  .check-group > .lbl{display:block;font-size:12px;color:#8a96a4;margin-bottom:4px;letter-spacing:.5px}
-  .check-group .toggle{margin:10px 0 0}
 
   /* ---- 語言切換膠囊 ---- */
   .lang-pill{display:inline-flex;background:#0f1318;border:1px solid #2b333d;border-radius:999px;padding:3px;gap:2px}
@@ -433,9 +455,6 @@
   .seg button:hover{color:#dfe6ee}
   .seg button.on{background:#2a7de1;color:#fff;font-weight:700}
   .seg button:focus-visible{outline:2px solid #77b5ff;outline-offset:2px}
-  .check-group.is-dim{opacity:.45}
-  .check-group.is-dim .toggle{cursor:not-allowed}
-  .check-group.is-dim .toggle input{pointer-events:none}
   .tcard-rmk{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
   @media (max-width:700px){.tcard-rmk{grid-template-columns:1fr}}
   .tcard-rmk .cnt{float:right;color:#5d6673;font-variant-numeric:tabular-nums;letter-spacing:0}
@@ -457,7 +476,7 @@
         <div id="rows"></div>
         <div class="foot">
           <div class="ticker"><div class="ticker-track" id="ticker"></div></div>
-          <div class="clock" id="clock">09<span class="colon">:</span>54</div>
+          <div class="clock" id="clock"><span class="ck">09<span class="colon" aria-hidden="true"></span>54</span></div>
         </div>
       </div>
     </div>
@@ -490,7 +509,7 @@
         <div id="rows2"></div>
         <div class="foot">
           <div class="ticker"><div class="ticker-track" id="ticker2"></div></div>
-          <div class="clock" id="clock2">09<span class="colon">:</span>54</div>
+          <div class="clock" id="clock2"><span class="ck">09<span class="colon" aria-hidden="true"></span>54</span></div>
         </div>
       </div>
     </div>
@@ -514,7 +533,7 @@
           <button data-m="auto" class="on" type="button">自動（API 推導）</button>
           <button data-m="manual" type="button">手動輸入</button>
         </div>
-        <p class="hint" id="remarkModeHint">自動模式：勾選的項目（經由／車輛數／服務標記）每 4 秒輪一種，<b>同一時間整排顯示同一種資訊</b>。切到「手動輸入」可逐班自訂中／英備註。</p>
+        <p class="hint" id="remarkModeHint">自動模式：比照臺鐵，備註欄<b>只寫「路線」與「車輛數」並輪播</b>（例如「山線」⇄「12輛」，每 4 秒換一頁、整排同步；英文版「Mtn.」⇄「12 cars」），不寫身障、自行車、便當、哺乳室等服務標記。切到「手動輸入」可逐班自訂中／英備註。</p>
       </div>
       <div class="tlist" id="editRows"></div>
       <div class="acts"><button class="btn primary" id="addRow" type="button">＋ 新增班次</button></div>
@@ -522,25 +541,9 @@
         英文目的地可留空，會自動使用內建英譯。<br>
         <b>停靠站</b>填在每班次第二行，以「、」或逗號分隔；只顯示排序後第一列車的停靠站，英文留空同樣使用內建英譯。
       </p>
-      <div class="check-group" id="rmkAutoGroup">
-        <span class="lbl">備註欄（Rmk.）顯示項目（自動模式）</span>
-        <label class="toggle"><input type="checkbox" id="rmkVia" checked><span class="t">
-          經由
-          <small>山線／海線取 TDX <code>TripLine</code>；宜蘭線、北迴、南迴、花東與各支線由停靠站推導；都沒有則顯示「縱貫線」。</small>
-        </span></label>
-        <label class="toggle"><input type="checkbox" id="rmkCars" checked><span class="t">
-          車輛數
-          <small>依車種編成推導（EMU3000／PP＝12 輛、EMU900＝10 輛、EMU800/700/500＝8 輛、太魯閣／普悠瑪＝8 輛、DMU＝9 輛）；型號不明顯示「–」，不估算。</small>
-        </span></label>
-        <label class="toggle"><input type="checkbox" id="rmkFlags" checked><span class="t">
-          服務標記
-          <small>身障、自行車、便當、哺乳室、行李、加班車等標記。</small>
-        </span></label>
-      </div>
       <p class="hint">
-        <b>自動模式</b>是「整排同步輪播」：上方勾選幾種資訊就輪幾種（經由 → 車輛數 → 服務標記，每種停留 4 秒），
-        <b>同一時間所有列都顯示同一種資訊</b>，不會上面寫經由、下面寫幾節車廂；英文直接寫路線簡寫（Mtn.／S-Link／12 cars），不加 Via。
-        某班車在該項目沒有資料時<b>該格留空</b>（不再顯示孤零零的「–」）。要指定實際輛數，直接在「輛」欄填數字。<br>
+        <b>路線</b>：山線／海線取 TDX <code>TripLine</code>；宜蘭線、北迴、南迴、花東與各支線由停靠站推導；都沒有則顯示「縱貫線」。最多顯示兩段，以「・」分隔。<br>
+        <b>輛數</b>：依車種編成推導（EMU3000／PP＝12 輛、EMU900＝10 輛、EMU800/700/500＝8 輛、太魯閣／普悠瑪＝8 輛、DMU＝9 輛），型號不明就不顯示、不估算；要指定實際輛數，直接在上方班次的「輛」欄填數字。整排都沒有資料的那一頁會跳過；單一班次在該頁沒有資料才顯示「-」。<br>
         <b>手動模式</b>則逐班輸入中／英備註（各 ≤100 字）：放得下一行顯示，放不下自動改成無縫跑馬燈；英文留空時 English 版回退顯示中文備註。人工備註會跟著班次存檔，自動同步也不會被 TDX 覆寫。
       </p>
     </div>
@@ -758,7 +761,7 @@
           · 即時狀態：<code>/api/basic/v3/Rail/TRA/StationLiveBoard/Station/{StationID}</code>（DelayTime、RunningStatus、Platform；<code>00</code>／空白＝月台未定）<br>
           · 列車動態：<code>/api/basic/v3/Rail/TRA/TrainLiveBoard/TrainNo/{TrainNo}</code>（TrainStationStatus，判斷進站中／已離站；只查看板會用到的前幾班，不再整批抓全線）<br>
           · 當日班表：<code>/api/basic/v3/Rail/TRA/DailyStationTimetable/Today/Station/{StationID}</code>（SuspendedFlag、ServiceType；備援 <code>TrainDate/{date}?$filter=StationID eq '{id}'</code>）<br>
-          · 停靠站與車次資訊：依序 <code>DailyTrainTimetable/Today/TrainNo/{TrainNo}</code>（今日實際，含每站停駛旗標）→ <code>GeneralTrainTimetable/TrainNo/{TrainNo}</code> → <code>SpecificTrainTimetable/TrainNo/{TrainNo}</code>；同時從 <code>TrainInfo</code> 取身障／自行車／便當／哺乳室旗標、備註、山海線（TripLine）與起站<br>
+          · 停靠站與車次資訊：依序 <code>DailyTrainTimetable/Today/TrainNo/{TrainNo}</code>（今日實際，含每站停駛旗標）→ <code>GeneralTrainTimetable/TrainNo/{TrainNo}</code> → <code>SpecificTrainTimetable/TrainNo/{TrainNo}</code>；同時從 <code>TrainInfo</code> 取備註、山海線（TripLine）與起站（身障／自行車等服務旗標也會取回存檔，但備註欄不顯示）<br>
           · 車站清單：<code>/api/basic/v3/Rail/TRA/Station</code>（快取 24 小時；失敗時退回內建 13 站）<br>
           有金鑰時走 TDX（Token 過期會自動重取並重試一次，仍失敗才降級）；未填金鑰或 TDX 失敗時，若未關閉上方選項，會退回免 token 的 PTX 同路徑端點。
           PTX 為已宣告落日的舊平台；TDX 的免金鑰訪客模式則限瀏覽器使用、每日每 IP 僅少量次數（約 20 次，依 TDX Swagger 說明），都不適合看板長時間運作。
@@ -913,13 +916,13 @@ function carsFromType(typeName, note, typeId){
     if (/莒光/.test(t)) return 8;
     if (/復興/.test(t)) return 8;
     /* 只寫「區間／區間快／普快」而沒有型號時（EMU500/700/800/900 輛數不同），
-       依使用者指定不估算，回 0 → 備註顯示「–」。 */
+       依使用者指定不估算，回 0 → 備註欄不顯示輛數。 */
     return 0;
   };
   const known = byType();
   if (known) return known;
   /* 真的沒有車型可判斷時，才從 Note 的車廂敘述取線索：
-     像「第12車為親子車廂」→ 至少 12 輛。抓不到就回 0（備註顯示「–」）。 */
+     像「第12車為親子車廂」→ 至少 12 輛。抓不到就回 0（備註欄不顯示輛數）。 */
   const nums = [...String(note || '').matchAll(/第\s*(\d+)\s*(?:[~～-]\s*(\d+)\s*)?(?:節|車)/g)]
     .flatMap(m => [Number(m[1]), m[2] ? Number(m[2]) : 0]).filter(x => x > 0 && x <= 20);
   return nums.length ? Math.max(...nums) : 0;
@@ -932,15 +935,13 @@ function carsFromType(typeName, note, typeId){
 const DEFAULT_STATE = {
   platform:'1B', showPlatform:true, platColor:'north', platSide:'right', rowCount:2,
   showStops:true, stopsOrder:'after', tickerCycles:1, tickerSpeed:0.11,
-  // 備註欄要顯示哪些資訊（比照臺鐵 PIDS 的 Rmk. 欄）
-  remarkShows:{ via:true, cars:true, flags:false },
   tickerZh:'鐵路警察局提醒您：「你我都會是行人，駕駛遵守交通規則，禮讓行人。」　　列車進站時請勿跨越月台黃線，並注意月台間隙。　　',
   tickerEn:'Please stand behind the yellow line while the train is approaching, and mind the gap between the train and the platform.　　',
   /* 離站緩衝（分鐘）：0／1／2／5，預設 2 → 可在「顯示設定 → 班次下架」調整 */
   departGrace:2,
   /* 停駛班次：預設在表定＋緩衝後下架；勾選則整天保留示警（到營運日結束） */
   keepCancelled:false,
-  /* 備註欄模式：auto（API 推導輪播）｜manual（逐班手動輸入） */
+  /* 備註欄模式：auto（API 推導：路線 ⇄ 車輛數輪播）｜manual（逐班手動輸入） */
   remarkMode:'auto',
   /* 假資料清零：開機顯示「本月台暫無列車」，等同步或手動新增 */
   trains:[]
@@ -1124,13 +1125,16 @@ function sorted(){
     return String(a.time).localeCompare(String(b.time));
   });
 }
-/* 看板簽章：排序後前 N 班的「車次|ts|狀態|誤點」。每秒比對，
-   班次離站的當秒簽章就會改變 → 立即重繪、下一班遞補（不再等 4 秒輪播）。 */
+/* 看板簽章：把「畫面上看得到、而且會自己變」的東西濃縮成一個字串——
+     顯示語言｜列數｜備註這一刻的種類｜排序後前 N 班的「車次|ts|狀態|誤點|圓點亮不亮」。
+   tick() 每秒比對一次：班次離站、圓點該亮、備註輪到下一種、語言切換的「當秒」簽章就會改變 → 立即重繪；
+   沒有變化就不重畫（不再每 4 秒無條件重繪，手動長備註的跑馬燈也不會一直被打斷重來）。 */
 function boardSignature(nowMs){
   const now = Number.isFinite(nowMs) ? nowMs : Date.now();
   const list = sorted().filter(t => !isDeparted(t, now)).slice(0, state.rowCount);
-  return `${uiLang}|${state.rowCount}|` + list
-    .map(t => `${t.no}|${Math.round(tsOf(t) || 0)}|${t.st}|${Number(t.min) || 0}`).join(',');
+  const cat = state.remarkMode === 'manual' ? '' : (remarkCatAt(now, list) || '');
+  return `${uiLang}|${state.rowCount}|${cat}|` + list
+    .map(t => `${t.no}|${Math.round(tsOf(t) || 0)}|${t.st}|${Number(t.min) || 0}|${showSignal(t, now) ? 1 : 0}`).join(',');
 }
 function firstBoardTrain(nowMs){
   const now = Number.isFinite(nowMs) ? nowMs : Date.now();
@@ -1138,36 +1142,22 @@ function firstBoardTrain(nowMs){
 }
 
 /* ====== 備註欄（Rmk.）======
-   比照臺鐵 PIDS：顯示「經由」與「車輛數」；英文版用簡寫，避免擠爆欄位。
-   顯示順序：經由 → 車輛數 → 身障／自行車／餐旅等服務標記 */
-const FLAG_LABEL = {
-  wheelchair:{zh:'身障',   en:'WC'},
-  bike:      {zh:'自行車', en:'Bike'},
-  dining:    {zh:'便當',   en:'Meal'},
-  breastfeed:{zh:'哺乳室', en:'Nurse'},
-  package:   {zh:'行李',   en:'Lugg'},
-  extra:     {zh:'加班車', en:'Extra'}
-};
+   比照臺鐵 PIDS：備註欄只顯示「路線」與「車輛數」，英文版用簡寫，避免擠爆窄欄位。
+   不寫身障／自行車／便當／哺乳室等服務標記（TDX 的 TrainInfo 仍會把這些旗標取回、存在班次上，但看板不顯示）。
 
-/* 備註欄有兩種模式：
-     自動（預設）：以「同一種資訊」為單位整排輪播——經由 → 車輛數 →（服務標記），
+   備註欄有兩種模式：
+     自動（預設）：以「同一種資訊」為單位整排輪播——路線 ⇄ 車輛數（例如「山線」⇄「12輛」），
                    每個項目停留 4 秒，同一時間看板上所有列都顯示同一種資訊，
-                   不會出現「上面寫經由、下面寫幾節車廂」。
+                   不會出現「上面寫路線、下面寫幾節車廂」。
      手動：逐班輸入中／英備註，短的一行顯示、長的走跑馬燈。
-   共同原則：「沒有資料就不顯示」——車型不明的輛數不會冒出孤零零的「–」。 */
-const REMARK_CATS = ['via','cars','flags'];
-const REMARK_CYCLE_SEC = 4;        // 每一種資訊停留幾秒
-/* 目前開啟（要輪播）的資訊種類，順序固定：經由 → 車輛數 → 服務標記 */
-function activeRemarkCats(){
-  const show = state.remarkShows || {via:true, cars:true, flags:false};
-  return REMARK_CATS.filter(k => show[k] !== false);
-}
-/* 全站共用的輪播指針：同一秒所有列拿到同一個種類。
-   傳入看板上的班次時，會跳過「整排都沒有資料」的種類，避免整個備註欄一起變成「-」。 */
+   共同原則：「沒有資料就不顯示」——整排都沒有資料的那一頁會被跳過；單一班次在這一頁沒有資料才顯示「-」。 */
+const REMARK_CATS = ['via','cars'];     // 輪播順序：路線 → 車輛數
+const REMARK_CYCLE_SEC = 4;             // 每一種資訊停留幾秒
 const REMARK_EMPTY = '-';
+/* 這一刻整排要顯示哪一種：同一秒所有列拿到同一個種類。
+   傳入看板上的班次時，會跳過「整排都沒有資料」的種類，避免整個備註欄一起變成「-」。 */
 function remarkCatAt(nowMs, trains){
-  let cats = activeRemarkCats();
-  if (!cats.length) return null;
+  let cats = REMARK_CATS;
   if (Array.isArray(trains) && trains.length){
     const withData = cats.filter(c => trains.some(t => remarkCatText(t, uiLang, c)));
     if (withData.length) cats = withData;
@@ -1189,11 +1179,6 @@ function remarkCatText(t, l, cat){
     const cars = Number(t.cars) || carsFromType(t.typeRaw || t.type, t.note, t.typeId);
     return cars > 0 ? (zh ? `${cars}輛` : `${cars} cars`) : '';
   }
-  if (cat === 'flags' && t.flags){
-    const f = Object.entries(t.flags).filter(([k,v]) => v && FLAG_LABEL[k])
-      .map(([k]) => zh ? FLAG_LABEL[k].zh : FLAG_LABEL[k].en);
-    return f.length ? f.join(zh ? '・' : '/') : '';
-  }
   return '';
 }
 /* 編輯區預覽：列出這班車在自動模式下「可能出現」的內容（依輪播順序） */
@@ -1204,7 +1189,7 @@ function remarkPages(t, l){
     const txt = l === 'zh' ? zh : (en || zh);          // EN 留空 → 回退顯示中文
     return txt ? [txt] : [];                            // 未填 → 欄位留空
   }
-  return activeRemarkCats().map(c => remarkCatText(t, l, c)).filter(Boolean);
+  return REMARK_CATS.map(c => remarkCatText(t, l, c)).filter(Boolean);
 }
 /* 看板上要顯示的備註文字（自動模式：整排同步；手動模式：單一內容）。
    沒有資料一律顯示「-」，備註欄不留空白。 */
@@ -1217,10 +1202,6 @@ function remarkTextFor(t, l, cat){
   }
   return remarkCatText(t, l, cat) || REMARK_EMPTY;
 }
-function remarkTextAt(t, l, nowMs){
-  return remarkTextFor(t, l, remarkCatAt(nowMs, state.trains));
-}
-function remarkText(t, l, nowMs){ return remarkTextAt(t, l, nowMs); }
 
 /* 月台編號：左上、右上各有一格固定的預留位置（.plat.pos-left／.pos-right），
    依設定顯示左側、右側或兩側；空值或關閉時整塊隱藏，並讓左右邊欄收回。 */
@@ -1260,6 +1241,9 @@ function renderPlatform(){
   });
 }
 
+/* 目前畫面上畫的是哪一版（boardSignature）；tick() 只在簽章變了才重畫。
+   在 render() 裡更新，所以不論是誰呼叫 render()（輪替語言、改設定…），tick() 都不會緊接著再多畫一次。 */
+let lastBoardSig = '';
 function render(){
   renderInto('head', 'rows');
   renderInto('head2', 'rows2');
@@ -1268,6 +1252,7 @@ function render(){
   layoutManualRemarks(document.getElementById('rows2'));
   fitElsIn(screen);
   fitElsIn(screen2);
+  lastBoardSig = boardSignature(Date.now());
 }
 
 /* 把看板畫進指定容器：主畫面（head／rows）與設定頁預覽（head2／rows2）共用同一份邏輯，
@@ -1322,10 +1307,24 @@ function renderInto(headId, rowsId){
   rowsEl.innerHTML = html;
 }
 
-/* ====== 跑馬燈：宣傳標語 ＋ 上方第一列車停靠站（語言與上方獨立） ====== */
+/* ====== 跑馬燈：宣傳標語 ＋ 上方第一列車停靠站（語言與上方獨立） ======
+   運作方式＝「訊息接龍」：
+     · 一段訊息＝一種語言的「標語 ◆ 第一列車停靠站」，是帶子上獨立的一塊，從畫面右側進場，
+       整段從左側捲出去才算播完。
+     · 播完設定的輪數後，下一塊才換成另一種語言，直接接在上一塊後面（中間隔一段空檔）。
+       換語言發生在「接上新一塊」的瞬間，而接的位置在畫面外的右側——所以任何一段都不會被切到一半，
+       也不會在換語言之前先露出下一輪的開頭。
+     · 下一塊是「快輪到時才產生」：播放途中班次或設定有變動，只會影響之後的段落，正在播的這一段不會被
+       換掉。只有使用者在設定頁親手改內容時，才會立刻從頭重播，方便預覽。 */
 const tickerEl = document.getElementById('ticker');
 const tickerEl2 = document.getElementById('ticker2');   // 設定頁預覽的跑馬燈，與主畫面同步
-let tx = 0, tickerKey = '', tickerUnit = 0, cycleCount = 0;
+const TICKER_GAP  = '　　　◆　　　';   // 段與段之間的空檔
+const TICKER_LEAD = 80;                // 帶子尾端離畫面右緣不到這麼多 px，就先在畫面外接上下一段
+let tx = 0;                            // 整條帶子的水平位移（px，1280 基準）
+let tickerSegs = [];                   // 目前在帶子上的段落：{lang, text, w, els[]}
+let tickerW = 0;                       // 帶子總寬（各段寬度加總）
+let tickerRun = {lang:null, n:0};      // 最近一次接上的語言，以及該語言已連續接了幾段
+let tickerEditTimer = null;
 function parseStops(s){
   return String(s ?? '').split(/[、,，;；\/|\n\r]+/).map(x=>x.trim()).filter(Boolean);
 }
@@ -1360,14 +1359,93 @@ function tickerContent(l){
     }
   }
   if (state.stopsOrder === 'before') parts.reverse();
-  const body = parts.length ? parts.join('　　◆　　') : (l==='zh' ? '　　　　' : '          ');
-  return body + '　　';
+  return parts.join('　　◆　　');      // 不含尾端空白；段與段的空檔由 TICKER_GAP 負責
 }
 function tickerModeLabel(){
   return {auto:'自動輪替・播完才換',zh:'固定中文',en:'固定 English'}[tickerMode] || tickerMode;
 }
 function tickerSpeed(){ return +state.tickerSpeed || 0.11; }
 function cyclesNeeded(){ return Math.max(1, +state.tickerCycles || 1); }
+/* 目前跑馬燈可視區的寬度 */
+function tickerView(){
+  const p = tickerEl.parentElement;
+  return (p && p.clientWidth) || 1000;
+}
+/* 一段訊息 ＝ 這個語言的「標語 ◆ 第一列車停靠站」＋ 結尾空檔；完全沒有內容時只留白（仍要有寬度，帶子才推得動） */
+function tickerSegText(l){
+  const body = tickerContent(l);
+  return body ? body + TICKER_GAP : '　　　　　　';
+}
+/* 下一段要用哪一種語言：固定語言就一直是它；自動輪替＝同一語言連續播滿「輪數」段後換另一種 */
+function nextSegLang(){
+  if (tickerMode === 'zh' || tickerMode === 'en') return tickerMode;
+  if (!tickerRun.lang) return tickLang;
+  return tickerRun.n >= cyclesNeeded() ? (tickerRun.lang === 'zh' ? 'en' : 'zh') : tickerRun.lang;
+}
+/* 在帶子尾端接上一段新訊息（內容此刻才產生，所以一定是最新的班次與設定） */
+function appendSegment(){
+  const lang = nextSegLang();
+  const text = tickerSegText(lang);
+  const els = [tickerEl, tickerEl2].filter(Boolean).map(track => {
+    const el = document.createElement('span');
+    el.className = 'tseg';
+    el.textContent = text;
+    track.appendChild(el);
+    return el;
+  });
+  // 量「版面寬度」：getComputedStyle 的 width 不受外層 scale() 縮放影響（getBoundingClientRect 會）
+  const w = parseFloat(getComputedStyle(els[0]).width) || 1;
+  tickerSegs.push({lang, text, w, els});
+  tickerW += w;
+  tickerRun = {lang, n: tickerRun.lang === lang ? tickerRun.n + 1 : 1};
+}
+/* 依目前帶子上的段落，重算「最後接上的語言已連續幾段」（從固定語言切回自動輪替時用） */
+function recountTickerRun(){
+  const last = tickerSegs[tickerSegs.length - 1];
+  if (!last){ tickerRun = {lang:null, n:0}; return; }
+  let n = 0;
+  for (let i = tickerSegs.length - 1; i >= 0 && tickerSegs[i].lang === last.lang; i--) n++;
+  tickerRun = {lang:last.lang, n};
+}
+/* 每一幀：① 移除已經完整捲出左側的段落　② 尾端快進畫面了就接上下一段　③ 更新「目前播放中的語言」 */
+function tickerAdvance(){
+  while (tickerSegs.length > 1 && tx + tickerSegs[0].w <= 0){
+    const gone = tickerSegs.shift();
+    tx += gone.w; tickerW -= gone.w;
+    gone.els.forEach(el => el.remove());
+  }
+  const view = tickerView();
+  for (let guard = 0; guard < 12 && tx + tickerW < view + TICKER_LEAD; guard++) appendSegment();
+  let x = tx, cur = tickerSegs[0];
+  for (const seg of tickerSegs){ if (x <= view) cur = seg; x += seg.w; }
+  if (cur && cur.lang !== tickLang){ tickLang = cur.lang; updateTickerInfo(); }
+}
+/* 清空帶子、從畫面右側重新進場（只有使用者主動操作或開機時才會走到這裡） */
+function rebuildTicker(){
+  [tickerEl, tickerEl2].forEach(track => { if (track) track.textContent = ''; });
+  tickerSegs = []; tickerW = 0; tickerRun = {lang:null, n:0};
+  if (tickerMode === 'zh' || tickerMode === 'en') tickLang = tickerMode;
+  tx = tickerView();
+  tickerAdvance();
+  updateTickerInfo();
+}
+/* keepPosition=true：資料變動（同步、班次離站）——只更新資訊面板；新內容會在「下一段」接上時自然套用，
+                      不打斷正在播的這一段。
+   keepPosition=false 或 force：立即重建、從右側重新進場。 */
+function setTicker(keepPosition, force){
+  if (force || !keepPosition) rebuildTicker();
+  else updateTickerInfo();
+}
+/* 使用者在設定頁親手改了標語／班次 → 為了預覽即時看到結果才重播（防抖 350ms，打字時不會一直重來）。
+   只有「帶子上某一段的內容和現在算出來的不一樣」才重播；資料自己的變動（同步、離站）不走這裡。 */
+function tickerEdited(lang){
+  clearTimeout(tickerEditTimer);
+  tickerEditTimer = setTimeout(()=>{
+    if (lang && tickerMode !== 'auto' && tickerMode !== lang) return;   // 固定在另一種語言：這個改動目前看不到
+    if (lang && tickerMode === 'auto') tickLang = lang;                  // 自動輪替：改哪個語言就先播哪個，立刻看到結果
+    if (lang || tickerSegs.some(seg => seg.text !== tickerSegText(seg.lang))) rebuildTicker();
+  }, 350);
+}
 function updateTickerInfo(){
   const info = document.getElementById('stopsInfo');
   if (info){
@@ -1378,86 +1456,78 @@ function updateTickerInfo(){
   }
   const st = document.getElementById('tickerStatus');
   if (st){
-    const sec = Math.max(1, Math.round(tickerUnit / tickerSpeed() / 1000));
+    const seg = [...tickerSegs].reverse().find(x => x.lang === tickLang) || tickerSegs[0];
+    const sec = seg ? Math.max(1, Math.round(seg.w / tickerSpeed() / 1000)) : 0;
     st.textContent = `跑馬燈：${tickLang==='zh'?'中文':'English'}（${tickerModeLabel()}）・整段約 ${sec} 秒／輪，播完 ${cyclesNeeded()} 輪才換語言`;
   }
-}
-function setTicker(keepPosition, force){
-  const txt = tickerContent(tickLang);
-  if (force) tickerKey = '';
-  if (txt !== tickerKey){
-    tickerKey = txt;
-    tickerEl.textContent = txt;
-    if (tickerEl2) tickerEl2.textContent = txt;
-    const unit = tickerEl.scrollWidth || 1;
-    const view = tickerEl.parentElement.clientWidth || 1050;
-    const n = Math.max(2, Math.ceil(view/unit) + 1);   // 重複足夠次數，確保無縫且不留空檔
-    tickerEl.textContent = txt.repeat(n);
-    if (tickerEl2) tickerEl2.textContent = tickerEl.textContent;
-    tickerUnit = tickerEl.scrollWidth / n;
-    cycleCount = 0;
-    if (keepPosition && tickerUnit > 0) tx = -(((-tx) % tickerUnit + tickerUnit) % tickerUnit);
-    else tx = 0;
-  } else if (!keepPosition){
-    tx = 0;
-  }
-  updateTickerInfo();
-}
-/* 語言只在「一整段捲完」的邊界才切換，避免中途重播 */
-function nextTickLang(){
-  if (tickerMode==='auto') return tickLang==='zh' ? 'en' : 'zh';
-  return tickLang;
 }
 let last = performance.now();
 function loop(now){
   const dt = Math.min(64, now-last); last = now;
   tx -= dt * tickerSpeed();              // 速度 px/ms（1280 基準）
-  if (tickerUnit > 0 && -tx >= tickerUnit){
-    tx += tickerUnit;                    // 回到段落開頭；此處換語言不會有跳動
-    cycleCount++;
-    if (cycleCount >= cyclesNeeded()){
-      cycleCount = 0;
-      const next = nextTickLang();
-      if (next !== tickLang){
-        tickLang = next;
-        setTicker(false);                // 播放完畢才重建並切換語言
-      }
-    }
-  }
-  tickerEl.style.transform = `translate(${tx}px,-50%)`;
-  if (tickerEl2) tickerEl2.style.transform = `translate(${tx}px,-50%)`;
+  tickerAdvance();
+  const tr = `translate(${tx}px,-50%)`;
+  tickerEl.style.transform = tr;
+  if (tickerEl2) tickerEl2.style.transform = tr;
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
 /* ====== 時鐘 ====== */
-let lastClockMin = '', lastRemarkSlot = -1, lastBoardSig = '';
+let lastClockMin = '';
 function tick(){
   const d = new Date();
   const hm = taiwanTimeString(d);                 // 'HH:mm'
   const [h, m] = hm.split(':');
-  /* 時鐘只在「換分鐘」時重寫內容，冒號動畫不會每秒重播 */
+  /* 時鐘只在「換分鐘」時重寫內容，冒號動畫不會每秒重播。冒號是 CSS 畫的兩個點（見 .clock .colon），不是字元 */
   if (hm !== lastClockMin){
     lastClockMin = hm;
-    const clockHTML = `${h}<span class="colon">:</span>${m}`;
+    const clockHTML = `<span class="ck">${h}<span class="colon" aria-hidden="true"></span>${m}</span>`;
     const c1 = document.getElementById('clock');
     if (c1) c1.innerHTML = clockHTML;
     const c2 = document.getElementById('clock2');
     if (c2) c2.innerHTML = clockHTML;
   }
-  /* 每 4 秒輪播一則備註；另外每秒檢查看板簽章——
-     班次離站的「當秒」簽章就會改變，於是立即重繪、下一班遞補。 */
-  const slot = Math.floor(Date.now() / (REMARK_CYCLE_SEC * 1000));
-  const sig  = boardSignature(Date.now());
-  if (slot !== lastRemarkSlot || sig !== lastBoardSig){
-    const trainChanged = sig !== lastBoardSig;
-    lastRemarkSlot = slot;
-    lastBoardSig = sig;
-    render();
-    if (trainChanged) setTicker(true);            // 跑馬燈第一列車換人 → 同步換內容
+  /* 每秒比對看板簽章，變了才重畫：班次離站的「當秒」簽章就會改變 → 立即重繪、下一班遞補；
+     圓點該亮的時間點、備註輪到下一種也都在簽章裡。 */
+  if (boardSignature(Date.now()) !== lastBoardSig){
+    render();               // render() 會把 lastBoardSig 更新成最新
+    setTicker(true);        // 第一列車可能換人：只更新資訊面板；跑馬燈的新內容在「下一段」接上時自然套用
   }
 }
 setInterval(tick, 1000); tick();
+
+/* ====== 底列垂直對齊：時鐘數字與跑馬燈文字的「視覺中心」都落在底列正中線 ======
+   純 CSS 的 flex 置中是以「行框」為準，而行框上下的留白每種字型都不一樣（DIN／Bahnschrift／Segoe UI／PingFang…），
+   所以換一台電腦、換一種字型，數字就會偏上或偏下——看起來就像「掉下去」。
+   這裡改成量這台電腦實際用到的字型：用 canvas 取得 ascent／descent 與大寫字高，算出文字要位移幾 px，
+   再用 CSS 變數 --clock-dy／--ticker-dy 套回去（前提是元素用固定 line-height，基線位置才算得準）。
+   推導：行框（高 L）置中後，基線在中心下方 (A−D)/2；大寫字高 cap 的中心在基線上方 cap/2，
+        所以字形中心落在行框中心下方 δ=(A−D)/2−cap/2，要上移 δ（即位移 (cap+D−A)/2）才會正中。 */
+let footCtx = null;
+function footMetrics(el, sample){
+  const none = {dy:0, cap:0};
+  if (!el) return none;
+  try{
+    const cs = getComputedStyle(el);
+    footCtx = footCtx || document.createElement('canvas').getContext('2d');
+    footCtx.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m = footCtx.measureText(sample);
+    const A = m.fontBoundingBoxAscent, D = m.fontBoundingBoxDescent, cap = m.actualBoundingBoxAscent;
+    if (![A, D, cap].every(Number.isFinite) || !(cap > 0)) return none;   // 瀏覽器量不到 → 維持純 CSS 置中
+    return {dy:(cap + D - A) / 2, cap};
+  }catch(e){ return none; }
+}
+function alignFoot(){
+  const clk = footMetrics(document.getElementById('clock'),  '0123456789');
+  const tkr = footMetrics(document.getElementById('ticker'), 'H');
+  [screen, screen2].forEach(sc => {
+    if (!sc) return;
+    sc.style.setProperty('--clock-dy',  clk.dy.toFixed(2) + 'px');
+    sc.style.setProperty('--ticker-dy', tkr.dy.toFixed(2) + 'px');
+    if (clk.cap) sc.style.setProperty('--digit-h', clk.cap.toFixed(2) + 'px');   // 冒號的高度＝數字高，兩點才會對稱在數字正中
+  });
+}
 
 /* ====== 上方到站資訊輪替：中文 8 秒、英文 5 秒（完全不影響跑馬燈） ====== */
 let rotTimer;
@@ -1482,9 +1552,9 @@ document.getElementById('tickerLangPill').addEventListener('click', e=>{
   tickerMode = b.dataset.l;
   if (tickerMode==='zh' || tickerMode==='en'){
     tickLang = tickerMode;
-    setTicker(false);
+    rebuildTicker();                    // 使用者主動指定語言 → 立刻從右側重新播這個語言
   }else{
-    cycleCount = 0;                     // 從目前語言重新數一輪
+    recountTickerRun();                 // 回到自動輪替：目前這段播完，才依「輪數」換語言
     updateTickerInfo();
   }
   saveSettings();
@@ -1578,10 +1648,6 @@ function buildEditor(force){
   document.getElementById('platSide').value = platSide();
   syncPlatformLabel();
   document.getElementById('showPlatform').checked = !!state.showPlatform;
-  const rmk = state.remarkShows || {};
-  document.getElementById('rmkVia').checked   = rmk.via   !== false;
-  document.getElementById('rmkCars').checked  = rmk.cars  !== false;
-  document.getElementById('rmkFlags').checked = rmk.flags !== false;
   document.getElementById('platColor').value = state.platColor;
   document.getElementById('rowCount').value = state.rowCount;
   document.getElementById('tickerZh').value = state.tickerZh;
@@ -1594,20 +1660,11 @@ function buildEditor(force){
   if (dg) dg.value = String(departGraceMin());
   const kc = document.getElementById('keepCancelled');
   if (kc) kc.checked = !!state.keepCancelled;
-  syncRemarkModeUI();
   document.querySelectorAll('#remarkModeSeg button')
     .forEach(b => b.classList.toggle('on', b.dataset.m === state.remarkMode));
   updateTrainCount();
 }
-/* 備註模式切換時：自動推導勾選區淡化＋不可點（版面不跳動），手動輸入框只在手動模式出現 */
-function syncRemarkModeUI(){
-  const manual = state.remarkMode === 'manual';
-  const grp = document.getElementById('rmkAutoGroup');
-  if (grp){
-    grp.classList.toggle('is-dim', manual);
-    grp.setAttribute('aria-disabled', manual ? 'true' : 'false');
-  }
-}
+
 function validateTime(val){
   return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(val);
 }
@@ -1661,7 +1718,7 @@ function updateTrainFromEditor(e){
   if (['dest','destEn','type','stops','stopsEn','rm','no'].includes(k)) t.human = {...(t.human||{}), [k]:true};
   if (k==='min' && t.min>0 && t.st==='ontime'){ t.st='delay'; tr.querySelector('[data-k=st]').value='delay'; }
   if (k==='min' && t.min===0 && t.st==='delay'){ t.st='ontime'; tr.querySelector('[data-k=st]').value='ontime'; }
-  render(); setTicker(true); saveSettings();
+  render(); tickerEdited(); saveSettings();
 }
 editRows.addEventListener('input', e=>{
   if (e.target.matches('input[data-k]')) updateTrainFromEditor(e);
@@ -1674,7 +1731,7 @@ editRows.addEventListener('focusout', ()=>{
 });
 editRows.addEventListener('click', e=>{
   const b = e.target.closest('[data-del]'); if(!b) return;
-  state.trains.splice(+b.dataset.del,1); buildEditor(true); render(); setTicker(true); saveSettings();
+  state.trains.splice(+b.dataset.del,1); buildEditor(true); render(); tickerEdited(); saveSettings();
 });
 document.getElementById('addRow').onclick = ()=>{
   const lastT = sorted().pop();
@@ -1685,14 +1742,13 @@ document.getElementById('addRow').onclick = ()=>{
                stops:'', stopsEn:'', manual:true};        // manual：自動同步時不會被洗掉
   row.ts = tsBase(row);
   state.trains.push(row);
-  buildEditor(true); render(); setTicker(true); saveSettings();
+  buildEditor(true); render(); tickerEdited(); saveSettings();
 };
 document.getElementById('remarkModeSeg').addEventListener('click', e=>{
   const b = e.target.closest('button'); if (!b) return;
   if (state.remarkMode === b.dataset.m) return;
   state.remarkMode = b.dataset.m;
   document.querySelectorAll('#remarkModeSeg button').forEach(x=>x.classList.toggle('on', x===b));
-  syncRemarkModeUI();
   buildEditor(true); render(); setTicker(true); saveSettings();
 });
 const departGraceEl = document.getElementById('departGrace');
@@ -1709,26 +1765,23 @@ document.getElementById('showPlatform').addEventListener('change', e=>{
   state.showPlatform = e.target.checked;
   render(); saveSettings();
 });
-[['rmkVia','via'],['rmkCars','cars'],['rmkFlags','flags']].forEach(([id,key])=>{
-  document.getElementById(id).addEventListener('change', e=>{
-    state.remarkShows = {...(state.remarkShows||{}), [key]: e.target.checked};
-    render(); saveSettings();
-  });
-});
 document.getElementById('showStops').addEventListener('change', e=>{
   state.showStops = e.target.checked;
-  setTicker(true); saveSettings();
+  rebuildTicker(); saveSettings();      // 使用者切換選項 → 立刻重播預覽
 });
 document.getElementById('stopsOrder').addEventListener('change', e=>{
   state.stopsOrder = e.target.value;
-  setTicker(true); saveSettings();
+  rebuildTicker(); saveSettings();
 });
 ['platform','platSide','platColor','rowCount','tickerZh','tickerEn','tickerCycles','tickerSpeed'].forEach(id=>{
   const el = document.getElementById(id);
   const handler = e=>{
     state[id] = ['rowCount','tickerCycles','tickerSpeed'].includes(id) ? +e.target.value : e.target.value;
     if (id === 'platSide') syncPlatformLabel();
-    render(); setTicker(true); saveSettings();
+    render(); saveSettings();
+    if (id === 'tickerZh') tickerEdited('zh');
+    else if (id === 'tickerEn') tickerEdited('en');
+    else tickerEdited();
   };
   el.addEventListener('input', handler);
   el.addEventListener('change', handler);
@@ -1752,7 +1805,7 @@ function saveSettings(){
       localStorage.setItem(SAVE_KEY, JSON.stringify({
         platform:s.platform, platColor:s.platColor, platSide:s.platSide, rowCount:s.rowCount,
         showPlatform:s.showPlatform, showStops:s.showStops, stopsOrder:s.stopsOrder,
-        remarkShows:s.remarkShows, remarkMode:s.remarkMode,
+        remarkMode:s.remarkMode,
         departGrace:s.departGrace, keepCancelled:s.keepCancelled,
         tickerZh:s.tickerZh, tickerEn:s.tickerEn, tickerCycles:s.tickerCycles, tickerSpeed:s.tickerSpeed,
         /* 班次也存（去掉即時快照 trainPos／live），重新整理／斷電重開不會回到假資料 */
@@ -1771,7 +1824,7 @@ function loadSettings(){
     const o = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}');
     if (o && typeof o === 'object'){
       const keys = ['platform','platColor','platSide','rowCount','showPlatform','showStops','stopsOrder',
-                    'remarkShows','remarkMode','departGrace','keepCancelled',
+                    'remarkMode','departGrace','keepCancelled',      // 舊存檔的 remarkShows／remarkLayout／flags 不再使用，不讀
                     'tickerZh','tickerEn','tickerCycles','tickerSpeed'];
       for (const k of keys) if (o[k] !== undefined) state[k] = o[k];
       state.rowCount = +state.rowCount || 2;
@@ -3004,7 +3057,8 @@ startSyncTimer();
 if (syncState.mode === 'auto') performSync();   // 重開機／重新整理後自動接回即時同步
 rotateUI();          // 只處理上方到站資訊
 setTicker(false);    // 跑馬燈自己管理語言與捲動
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ render(); setTicker(true, true); });
+alignFoot();         // 依實際字型量測，把時鐘數字與跑馬燈文字置中於底列
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(()=>{ alignFoot(); render(); setTicker(true, true); });
 </script>
 </body>
 </html>
